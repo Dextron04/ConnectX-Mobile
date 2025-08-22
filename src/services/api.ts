@@ -3,9 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface User {
   id: string;
-  email: string;
-  name: string;
-  avatarUrl?: string;
+  username: string;
+  avatar?: string;
+  isOnline?: boolean;
+  lastSeen?: string;
 }
 
 export interface LoginResponse {
@@ -15,19 +16,28 @@ export interface LoginResponse {
 
 export interface Message {
   id: string;
-  content: string;
-  userId: string;
-  conversationId: string;
+  content?: string;
+  type: 'TEXT' | 'IMAGE' | 'FILE';
+  senderId: string;
+  receiverId: string;
+  imageUrl?: string;
+  fileName?: string;
+  isRead?: boolean;
+  readAt?: string;
   createdAt: string;
-  user: User;
+  sender: User;
 }
 
 export interface Conversation {
   id: string;
-  title: string;
-  lastMessage?: Message;
-  participants: User[];
-  unreadCount: number;
+  participant: User;
+  lastMessage?: {
+    content?: string;
+    type: string;
+    sender: User;
+    createdAt: string;
+  };
+  updatedAt: string;
 }
 
 class ConnectXAPI {
@@ -103,19 +113,20 @@ class ConnectXAPI {
   }
 
   async getConversations(): Promise<Conversation[]> {
-    const response = await this.api.get<Conversation[]>('/conversations');
-    return response.data;
+    const response = await this.api.get('/conversations');
+    return response.data.conversations;
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {
-    const response = await this.api.get<Message[]>(`/conversations/${conversationId}/messages`);
-    return response.data;
+    const response = await this.api.get(`/conversations/${conversationId}/messages`);
+    return response.data.messages;
   }
 
-  async sendMessage(conversationId: string, content: string): Promise<Message> {
-    const response = await this.api.post<Message>('/messages', {
-      conversationId,
+  async sendMessage(receiverId: string, content: string, type: 'TEXT' | 'IMAGE' | 'FILE' = 'TEXT'): Promise<Message> {
+    const response = await this.api.post('/messages', {
+      receiverId,
       content,
+      type,
     });
     return response.data;
   }

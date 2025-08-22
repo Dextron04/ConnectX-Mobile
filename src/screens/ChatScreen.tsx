@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { connectXAPI, Conversation, Message } from '../services/api';
@@ -18,41 +20,67 @@ import { useAuth } from '../contexts/AuthContext';
 export const ChatScreen: React.FC = () => {
   const navigation = useNavigation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
-
+  const [isTyping, setIsTyping] = useState(false);
+  
+  const messagesEndRef = useRef<FlatList>(null);
   const { user, logout } = useAuth();
 
+  // Load conversations on mount
   useEffect(() => {
     loadConversations();
     setupSocketListeners();
 
     return () => {
       socketService.off('new-message');
+      socketService.off('user-typing');
+      socketService.off('user-stopped-typing');
+      socketService.off('user-status-changed');
     };
   }, []);
 
+  // Load messages when chat is selected
   useEffect(() => {
-    if (selectedConversation) {
-      loadMessages(selectedConversation);
-      socketService.joinConversation(selectedConversation);
-
+    if (selectedChat) {
+      loadMessages(selectedChat);
+      
+      // Join conversation room
+      socketService.emit('join-conversation', selectedChat);
+      
       return () => {
-        socketService.leaveConversation(selectedConversation);
+        // Leave conversation room
+        socketService.emit('leave-conversation', selectedChat);
       };
     }
-  }, [selectedConversation]);
+  }, [selectedChat]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
 
   const loadConversations = async () => {
     try {
+      setIsLoading(true);
       const convs = await connectXAPI.getConversations();
       setConversations(convs);
+      
+      // Auto-select first conversation if available
+      if (convs.length > 0 && !selectedChat) {
+        setSelectedChat(convs[0].id);
+      }
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to load conversations');
       console.error('Failed to load conversations:', error);
+      Alert.alert('Error', 'Failed to load conversations');
     } finally {
       setIsLoading(false);
     }
@@ -60,24 +88,57 @@ export const ChatScreen: React.FC = () => {
 
   const loadMessages = async (conversationId: string) => {
     try {
+      setIsLoadingMessages(true);
       const msgs = await connectXAPI.getMessages(conversationId);
       setMessages(msgs);
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to load messages');
       console.error('Failed to load messages:', error);
+      Alert.alert('Error', 'Failed to load messages');
+    } finally {
+      setIsLoadingMessages(false);
     }
   };
 
   const setupSocketListeners = () => {
+    // Listen for new messages
     socketService.on('new-message', (message: Message) => {
-      if (message.conversationId === selectedConversation) {
-        setMessages(prev => [...prev, message]);
+      console.log('Received new message:', message);
+      
+      // Add message to current conversation
+      if (message.senderId !== user?.id || message.receiverId !== user?.id) {
+        setMessages(prev => {
+          // Avoid duplicates
+          if (prev.find(m => m.id === message.id)) {
+            return prev;
+          }
+          return [...prev, message];
+        });
       }
       
-      setConversations(prev =>
-        prev.map(conv =>
-          conv.id === message.conversationId
-            ? { ...conv, lastMessage: message, unreadCount: conv.unreadCount + 1 }
+      // Update conversation list
+      loadConversations();
+    });
+
+    // Listen for typing indicators
+    socketService.on('user-typing', ({ userId, conversationId }: { userId: string; conversationId: string }) => {
+      if (conversationId === selectedChat && userId !== user?.id) {
+        setIsTyping(true);
+        setTimeout(() => setIsTyping(false), 3000);
+      }
+    });
+
+    socketService.on('user-stopped-typing', ({ userId, conversationId }: { userId: string; conversationId: string }) => {
+      if (conversationId === selectedChat && userId !== user?.id) {
+        setIsTyping(false);
+      }
+    });
+
+    // Listen for user status changes
+    socketService.on('user-status-changed', ({ userId, isOnline }: { userId: string; isOnline: boolean }) => {
+      setConversations(prev => 
+        prev.map(conv => 
+          conv.participant.id === userId 
+            ? { ...conv, participant: { ...conv.participant, isOnline } }
             : conv
         )
       );
@@ -85,20 +146,29 @@ export const ChatScreen: React.FC = () => {
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || isSending) {
+    if (!newMessage.trim() || !selectedChat || isSending) {
       return;
     }
+
+    const selectedConv = conversations.find(c => c.id === selectedChat);
+    if (!selectedConv) return;
 
     setIsSending(true);
     const messageContent = newMessage.trim();
     setNewMessage('');
 
     try {
-      const message = await connectXAPI.sendMessage(selectedConversation, messageContent);
+      const message = await connectXAPI.sendMessage(selectedConv.participant.id, messageContent);
+      
+      // Add message to current conversation
       setMessages(prev => [...prev, message]);
+      
+      // Update conversation list
+      loadConversations();
     } catch (error: any) {
+      console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message');
-      setNewMessage(messageContent);
+      setNewMessage(messageContent); // Restore message on error
     } finally {
       setIsSending(false);
     }
@@ -115,34 +185,65 @@ export const ChatScreen: React.FC = () => {
     );
   };
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatLastMessageTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
   const renderConversationItem = useCallback(({ item }: { item: Conversation }) => (
     <TouchableOpacity
       style={[
         styles.conversationItem,
-        selectedConversation === item.id && styles.selectedConversation
+        selectedChat === item.id && styles.selectedConversation
       ]}
-      onPress={() => setSelectedConversation(item.id)}
+      onPress={() => setSelectedChat(item.id)}
     >
+      <View style={styles.avatarContainer}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {item.participant.username?.[0]?.toUpperCase() || '?'}
+          </Text>
+        </View>
+        {item.participant.isOnline && <View style={styles.onlineIndicator} />}
+      </View>
+      
       <View style={styles.conversationInfo}>
-        <Text style={styles.conversationTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
+        <View style={styles.conversationHeader}>
+          <Text style={styles.username} numberOfLines={1}>
+            {item.participant.username}
+          </Text>
+          {item.lastMessage && (
+            <Text style={styles.messageTime}>
+              {formatLastMessageTime(item.lastMessage.createdAt)}
+            </Text>
+          )}
+        </View>
+        
         {item.lastMessage && (
           <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage.user.name}: {item.lastMessage.content}
+            {item.lastMessage.type === 'IMAGE' ? '📷 Image' : 
+             item.lastMessage.type === 'FILE' ? '📎 File' : 
+             item.lastMessage.content || 'Message'}
           </Text>
         )}
       </View>
-      {item.unreadCount > 0 && (
-        <View style={styles.unreadBadge}>
-          <Text style={styles.unreadCount}>{item.unreadCount}</Text>
-        </View>
-      )}
     </TouchableOpacity>
-  ), [selectedConversation]);
+  ), [selectedChat]);
 
   const renderMessageItem = useCallback(({ item }: { item: Message }) => {
-    const isMyMessage = item.userId === user?.id;
+    const isMyMessage = item.senderId === user?.id;
     
     return (
       <View style={[
@@ -150,14 +251,41 @@ export const ChatScreen: React.FC = () => {
         isMyMessage ? styles.myMessage : styles.otherMessage
       ]}>
         {!isMyMessage && (
-          <Text style={styles.senderName}>{item.user.name}</Text>
+          <Text style={styles.senderName}>{item.sender.username}</Text>
         )}
-        <Text style={styles.messageContent}>{item.content}</Text>
-        <Text style={styles.messageTime}>
-          {new Date(item.createdAt).toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
+        
+        {item.type === 'TEXT' && (
+          <Text style={[
+            styles.messageContent,
+            isMyMessage ? styles.myMessageText : styles.otherMessageText
+          ]}>
+            {item.content}
+          </Text>
+        )}
+        
+        {item.type === 'IMAGE' && (
+          <Text style={[
+            styles.messageContent,
+            isMyMessage ? styles.myMessageText : styles.otherMessageText
+          ]}>
+            📷 Image
+          </Text>
+        )}
+        
+        {item.type === 'FILE' && (
+          <Text style={[
+            styles.messageContent,
+            isMyMessage ? styles.myMessageText : styles.otherMessageText
+          ]}>
+            📎 {item.fileName || 'File'}
+          </Text>
+        )}
+        
+        <Text style={[
+          styles.messageTime,
+          isMyMessage ? styles.myMessageTime : styles.otherMessageTime
+        ]}>
+          {formatTime(item.createdAt)}
         </Text>
       </View>
     );
@@ -165,95 +293,151 @@ export const ChatScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Loading conversations...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>ConnectX</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity 
-            style={styles.notificationButton} 
-            onPress={() => navigation.navigate('NotificationSettings' as never)}
-          >
-            <Text style={styles.notificationText}>🔔</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.settingsButton} 
-            onPress={() => navigation.navigate('Settings' as never)}
-          >
-            <Text style={styles.settingsText}>Settings</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+  // Show conversation list on mobile if no chat selected
+  if (!selectedChat) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>ConnectX</Text>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.notificationButton} 
+              onPress={() => navigation.navigate('NotificationSettings' as never)}
+            >
+              <Text style={styles.notificationText}>🔔</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.settingsButton} 
+              onPress={() => navigation.navigate('Settings' as never)}
+            >
+              <Text style={styles.settingsText}>Settings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.content}>
-        <View style={styles.conversationsPanel}>
+        <View style={styles.conversationsList}>
           <Text style={styles.panelTitle}>Conversations</Text>
           <FlatList
             data={conversations}
             keyExtractor={(item) => item.id}
             renderItem={renderConversationItem}
-            style={styles.conversationsList}
             showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No conversations yet</Text>
+              </View>
+            }
           />
         </View>
+      </SafeAreaView>
+    );
+  }
 
-        <View style={styles.chatPanel}>
-          {selectedConversation ? (
-            <>
-              <FlatList
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessageItem}
-                style={styles.messagesList}
-                showsVerticalScrollIndicator={false}
-              />
-              
-              <View style={styles.messageInput}>
-                <TextInput
-                  style={styles.textInput}
-                  value={newMessage}
-                  onChangeText={setNewMessage}
-                  placeholder="Type a message..."
-                  multiline
-                  maxLength={1000}
-                  onSubmitEditing={sendMessage}
-                  blurOnSubmit={false}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.sendButton,
-                    (!newMessage.trim() || isSending) && styles.disabledSendButton
-                  ]}
-                  onPress={sendMessage}
-                  disabled={!newMessage.trim() || isSending}
-                >
-                  {isSending ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.sendButtonText}>Send</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </>
+  // Show chat view when conversation is selected
+  const selectedConv = conversations.find(c => c.id === selectedChat);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.chatHeader}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => setSelectedChat(null)}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.chatHeaderInfo}>
+          <Text style={styles.chatHeaderTitle} numberOfLines={1}>
+            {selectedConv?.participant.username}
+          </Text>
+          {selectedConv?.participant.isOnline ? (
+            <Text style={styles.onlineStatus}>Online</Text>
           ) : (
-            <View style={styles.emptyChat}>
-              <Text style={styles.emptyChatText}>
-                Select a conversation to start chatting
-              </Text>
-            </View>
+            <Text style={styles.offlineStatus}>Offline</Text>
           )}
         </View>
+
+        <TouchableOpacity 
+          style={styles.settingsButton} 
+          onPress={() => navigation.navigate('Settings' as never)}
+        >
+          <Text style={styles.settingsText}>⚙️</Text>
+        </TouchableOpacity>
       </View>
+
+      <KeyboardAvoidingView 
+        style={styles.chatContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {isLoadingMessages ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3b82f6" />
+          </View>
+        ) : (
+          <>
+            <FlatList
+              ref={messagesEndRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessageItem}
+              style={styles.messagesList}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.messagesContainer}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No messages yet</Text>
+                  <Text style={styles.emptyStateSubtext}>Send a message to start the conversation</Text>
+                </View>
+              }
+            />
+            
+            {isTyping && (
+              <View style={styles.typingIndicator}>
+                <Text style={styles.typingText}>{selectedConv?.participant.username} is typing...</Text>
+              </View>
+            )}
+            
+            <View style={styles.messageInput}>
+              <TextInput
+                style={styles.textInput}
+                value={newMessage}
+                onChangeText={setNewMessage}
+                placeholder="Type a message..."
+                multiline
+                maxLength={1000}
+                onSubmitEditing={sendMessage}
+                blurOnSubmit={false}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  (!newMessage.trim() || isSending) && styles.disabledSendButton
+                ]}
+                onPress={sendMessage}
+                disabled={!newMessage.trim() || isSending}
+              >
+                {isSending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.sendButtonText}>Send</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -323,15 +507,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  conversationsPanel: {
+  conversationsList: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRightWidth: 1,
-    borderRightColor: '#e5e7eb',
   },
   panelTitle: {
     fontSize: 16,
@@ -341,9 +519,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
-  },
-  conversationsList: {
-    flex: 1,
   },
   conversationItem: {
     flexDirection: 'row',
@@ -356,56 +531,113 @@ const styles = StyleSheet.create({
   selectedConversation: {
     backgroundColor: '#eff6ff',
   },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   conversationInfo: {
     flex: 1,
   },
-  conversationTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
+  conversationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  lastMessage: {
+  username: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    flex: 1,
+  },
+  messageTime: {
     fontSize: 12,
     color: '#6b7280',
   },
-  unreadBadge: {
-    backgroundColor: '#ef4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
+  lastMessage: {
+    fontSize: 14,
+    color: '#6b7280',
   },
-  unreadCount: {
-    color: '#fff',
-    fontSize: 12,
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  backButton: {
+    paddingRight: 16,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#3b82f6',
     fontWeight: '600',
   },
-  chatPanel: {
-    flex: 2,
-    backgroundColor: '#fff',
+  chatHeaderInfo: {
+    flex: 1,
+  },
+  chatHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  onlineStatus: {
+    fontSize: 12,
+    color: '#10b981',
+  },
+  offlineStatus: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  chatContainer: {
+    flex: 1,
   },
   messagesList: {
     flex: 1,
     paddingHorizontal: 16,
   },
+  messagesContainer: {
+    paddingVertical: 16,
+  },
   messageContainer: {
     marginVertical: 4,
     maxWidth: '80%',
+    padding: 12,
+    borderRadius: 12,
   },
   myMessage: {
     alignSelf: 'flex-end',
     backgroundColor: '#3b82f6',
-    borderRadius: 12,
-    padding: 12,
   },
   otherMessage: {
     alignSelf: 'flex-start',
     backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    padding: 12,
   },
   senderName: {
     fontSize: 12,
@@ -414,14 +646,29 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   messageContent: {
-    fontSize: 14,
-    color: '#1f2937',
+    fontSize: 16,
     marginBottom: 4,
   },
-  messageTime: {
-    fontSize: 10,
+  myMessageText: {
+    color: '#fff',
+  },
+  otherMessageText: {
+    color: '#1f2937',
+  },
+  myMessageTime: {
+    color: '#dbeafe',
+  },
+  otherMessageTime: {
     color: '#9ca3af',
-    textAlign: 'right',
+  },
+  typingIndicator: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  typingText: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontStyle: 'italic',
   },
   messageInput: {
     flexDirection: 'row',
@@ -441,7 +688,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     maxHeight: 100,
-    fontSize: 14,
+    fontSize: 16,
   },
   sendButton: {
     backgroundColor: '#3b82f6',
@@ -456,14 +703,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  emptyChat: {
+  emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 40,
   },
-  emptyChatText: {
+  emptyStateText: {
     fontSize: 16,
     color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#9ca3af',
     textAlign: 'center',
   },
 });
