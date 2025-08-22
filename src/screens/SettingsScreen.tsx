@@ -125,12 +125,12 @@ export const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>Settings</Text>
-        {isAuthenticated && !isSaving && (
+{!isAuthenticated && !isSaving && (
           <TouchableOpacity 
             style={styles.continueButton}
             onPress={() => navigation.navigate('Login' as never)}
           >
-            <Text style={styles.continueButtonText}>Continue</Text>
+            <Text style={styles.continueButtonText}>Continue to Login</Text>
           </TouchableOpacity>
         )}
       </View>

@@ -9,10 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 
 export const LoginScreen: React.FC = () => {
+  const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -51,17 +54,28 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.formContainer}>
-        <View style={styles.header}>
-          <Text style={styles.title}>ConnectX</Text>
-          <Text style={styles.subtitle}>
-            {isLogin ? 'Sign in to your account' : 'Create a new account'}
-          </Text>
-        </View>
+    <SafeAreaView style={styles.safeContainer}>
+      <View style={styles.topBar}>
+        <Text style={styles.topBarTitle}>ConnectX Mobile</Text>
+        <TouchableOpacity 
+          style={styles.settingsButton}
+          onPress={() => navigation.navigate('Settings' as never)}
+        >
+          <Text style={styles.settingsButtonText}>⚙️ Server Settings</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.formContainer}>
+          <View style={styles.header}>
+            <Text style={styles.title}>ConnectX</Text>
+            <Text style={styles.subtitle}>
+              {isLogin ? 'Sign in to your account' : 'Create a new account'}
+            </Text>
+          </View>
 
         <View style={styles.form}>
           {!isLogin && (
@@ -135,12 +149,42 @@ export const LoginScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  topBarTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  settingsButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#6b7280',
+    borderRadius: 6,
+  },
+  settingsButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
