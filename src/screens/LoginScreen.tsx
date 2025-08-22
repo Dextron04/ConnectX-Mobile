@@ -149,6 +149,7 @@ export const LoginScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
+      </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
