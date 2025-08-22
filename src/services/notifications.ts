@@ -75,9 +75,10 @@ class NotificationService {
       }
 
       // Get the push token
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
-      });
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : {}
+      );
 
       this.token = tokenData.data;
       await AsyncStorage.setItem('expo_push_token', this.token);

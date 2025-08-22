@@ -71,11 +71,6 @@
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id"
-      }
-    },
     "updates": {
       "fallbackToCacheTimeout": 0
     },
