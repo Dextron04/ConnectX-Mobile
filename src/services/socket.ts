@@ -14,7 +14,7 @@ class SocketService {
   private socket: Socket | null = null;
   private baseURL: string = 'http://localhost:3000';
 
-  connect(baseURL?: string) {
+  async connect(baseURL?: string) {
     if (this.socket?.connected) {
       return;
     }
@@ -23,10 +23,16 @@ class SocketService {
       this.baseURL = baseURL;
     }
 
+    // Get token before connecting
+    const token = await AsyncStorage.getItem('auth_token');
+
     this.socket = io(this.baseURL, {
       transports: ['websocket'],
       upgrade: true,
       forceNew: true,
+      auth: {
+        token: token
+      }
     });
 
     this.setupEventHandlers();
@@ -37,7 +43,6 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('Connected to ConnectX server');
-      this.authenticateSocket();
     });
 
     this.socket.on('disconnect', () => {
@@ -49,14 +54,6 @@ class SocketService {
     });
   }
 
-  private async authenticateSocket() {
-    if (!this.socket) return;
-
-    const token = await AsyncStorage.getItem('auth_token');
-    if (token) {
-      this.socket.emit('authenticate', { token });
-    }
-  }
 
   on<K extends keyof SocketEvents>(event: K, callback: SocketEvents[K]) {
     this.socket?.on(event, callback);

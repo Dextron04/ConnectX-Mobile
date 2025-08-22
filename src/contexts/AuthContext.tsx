@@ -79,7 +79,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (storedUser && token) {
         dispatch({ type: 'SET_USER', payload: storedUser });
-        socketService.connect();
+        await socketService.connect();
         await notificationService.initialize();
       } else {
         dispatch({ type: 'SET_LOADING', payload: false });
@@ -98,7 +98,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { user } = await connectXAPI.login(email, password);
       dispatch({ type: 'SET_USER', payload: user });
       
-      socketService.connect();
+      await socketService.connect();
       await notificationService.initialize();
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Login failed';
@@ -114,7 +114,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { user } = await connectXAPI.register(email, password, name);
       dispatch({ type: 'SET_USER', payload: user });
       
-      socketService.connect();
+      await socketService.connect();
       await notificationService.initialize();
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Registration failed';
