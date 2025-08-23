@@ -23,6 +23,23 @@ import socketService from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 
+interface SharedImage {
+  id: string;
+  fileName: string;
+  originalName: string;
+  url: string;
+  status: 'PENDING' | 'VIEWED' | 'DOWNLOADED';
+  createdAt: string;
+  sender: {
+    id: string;
+    username: string;
+  };
+  receiver: {
+    id: string;
+    username: string;
+  };
+}
+
 export const ChatScreen: React.FC = () => {
   const navigation = useNavigation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -33,11 +50,18 @@ export const ChatScreen: React.FC = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [isNearBottom, setIsNearBottom] = useState(true); // Track if user is near bottom
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chats' | 'library' | 'settings'>('chats');
+  
+  // Digital Library states
+  const [sharedImages, setSharedImages] = useState<SharedImage[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [selectedLibraryImage, setSelectedLibraryImage] = useState<SharedImage | null>(null);
+  const [libraryTab, setLibraryTab] = useState<'all' | 'sent' | 'received'>('all');
 
   const messagesEndRef = useRef<FlatList>(null);
   const { user, logout } = useAuth();
@@ -150,14 +174,6 @@ export const ChatScreen: React.FC = () => {
     processedMessageIds.current = currentIds;
   }, [messages]);
 
-  // Load conversations and unread counts when conversations change
-  useEffect(() => {
-    if (conversations.length > 0 && user?.id) {
-      console.log('🔄 Conversations loaded, fetching unread counts...');
-      loadUnreadCounts();
-    }
-  }, [conversations, user?.id]);
-  
   // Load conversations on mount
   useEffect(() => {
     console.log('🚀 ChatScreen mounted, loading conversations...');
@@ -195,6 +211,14 @@ export const ChatScreen: React.FC = () => {
       typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
     };
   }, []);
+
+  // Load conversations and unread counts when conversations change
+  useEffect(() => {
+    if (conversations.length > 0 && user?.id) {
+      console.log('🔄 Conversations loaded, fetching unread counts...');
+      loadUnreadCounts();
+    }
+  }, [conversations, user?.id]);
 
   // Load messages when chat is selected
   useEffect(() => {
@@ -871,25 +895,256 @@ export const ChatScreen: React.FC = () => {
     );
   }, [user?.id]);
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>Loading conversations...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const renderTabContent = () => {
+    if (selectedChat) {
+      // Show individual chat view
+      return renderChatView();
+    }
 
-  // Show conversation list on mobile if no chat selected
+    switch (activeTab) {
+      case 'chats':
+        return renderChatsTab();
+      case 'library':
+        return renderLibraryTab();
+      case 'settings':
+        return renderSettingsTab();
+      default:
+        return renderChatsTab();
+    }
+  };
+
+  const renderChatsTab = () => (
+    <View style={styles.tabContent}>
+      <View style={styles.conversationsList}>
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          renderItem={renderConversationItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.conversationsContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No conversations yet</Text>
+              <Text style={styles.emptyStateSubtext}>Start a new conversation to begin chatting</Text>
+            </View>
+          }
+        />
+      </View>
+    </View>
+  );
+
+  const loadLibraryImages = async () => {
+    // Only load if we're on the library tab
+    if (activeTab !== 'library') {
+      return;
+    }
+    
+    try {
+      setLibraryLoading(true);
+      const allImages = await connectXAPI.getSharedImages();
+      
+      let filteredImages = allImages;
+      if (libraryTab === 'sent') {
+        filteredImages = allImages.filter(img => img.sender.id === user?.id);
+      } else if (libraryTab === 'received') {
+        filteredImages = allImages.filter(img => img.receiver.id === user?.id);
+      }
+      
+      setSharedImages(filteredImages);
+    } catch (error: any) {
+      console.error('Failed to load library images:', error);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  // Load library images when tab becomes active or library filter changes
+  useEffect(() => {
+    if (activeTab === 'library') {
+      loadLibraryImages();
+    }
+  }, [activeTab, libraryTab, user?.id]);
+
+  const getImageStatusBadge = (image: SharedImage) => {
+    if (image.sender.id === user?.id) {
+      switch (image.status) {
+        case 'PENDING':
+          return { text: 'Not viewed', color: theme.colors.textMuted };
+        case 'VIEWED':
+          return { text: 'Viewed', color: theme.colors.primary };
+        case 'DOWNLOADED':
+          return { text: 'Downloaded', color: theme.colors.success };
+      }
+    } else {
+      switch (image.status) {
+        case 'PENDING':
+          return { text: 'New', color: theme.colors.error };
+        case 'VIEWED':
+          return { text: 'Viewed', color: theme.colors.primary };
+        case 'DOWNLOADED':
+          return { text: 'Downloaded', color: theme.colors.success };
+      }
+    }
+    return { text: 'Unknown', color: theme.colors.textMuted };
+  };
+
+  const renderLibraryImageItem = ({ item }: { item: SharedImage }) => {
+    const statusBadge = getImageStatusBadge(item);
+    const isMyImage = item.sender.id === user?.id;
+    const imageUrl = item.url.startsWith('http') ? item.url : `https://tre.dextron04.in${item.url}`;
+    
+    return (
+      <TouchableOpacity
+        style={styles.libraryImageItem}
+        onPress={() => setSelectedLibraryImage(item)}
+      >
+        <Image
+          source={{ uri: imageUrl }}
+          style={styles.libraryImageThumb}
+          onError={(error) => console.error('Image load error:', error.nativeEvent.error)}
+        />
+        <View style={styles.libraryImageInfo}>
+          <Text style={styles.libraryImageName} numberOfLines={1}>
+            {item.originalName}
+          </Text>
+          <Text style={styles.libraryImageUser}>
+            {isMyImage ? `To: ${item.receiver.username}` : `From: ${item.sender.username}`}
+          </Text>
+          <View style={styles.libraryImageFooter}>
+            <Text style={styles.libraryImageDate}>
+              {new Date(item.createdAt).toLocaleDateString()}
+            </Text>
+            <View style={[styles.libraryStatusBadge, { backgroundColor: statusBadge.color }]}>
+              <Text style={styles.libraryStatusText}>{statusBadge.text}</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderLibraryTab = () => (
+    <View style={styles.tabContent}>
+      <View style={styles.libraryContent}>
+        <Text style={styles.tabTitle}>Digital Library</Text>
+        <Text style={styles.tabSubtitle}>Your shared images and files</Text>
+        
+        {/* Library Filter Tabs */}
+        <View style={styles.libraryTabContainer}>
+          <TouchableOpacity
+            style={[styles.libraryTabItem, libraryTab === 'all' && styles.activeLibraryTabItem]}
+            onPress={() => setLibraryTab('all')}
+          >
+            <Text style={[styles.libraryTabText, libraryTab === 'all' && styles.activeLibraryTabText]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.libraryTabItem, libraryTab === 'sent' && styles.activeLibraryTabItem]}
+            onPress={() => setLibraryTab('sent')}
+          >
+            <Text style={[styles.libraryTabText, libraryTab === 'sent' && styles.activeLibraryTabText]}>
+              Sent
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.libraryTabItem, libraryTab === 'received' && styles.activeLibraryTabItem]}
+            onPress={() => setLibraryTab('received')}
+          >
+            <Text style={[styles.libraryTabText, libraryTab === 'received' && styles.activeLibraryTabText]}>
+              Received
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Images Grid */}
+        {libraryLoading ? (
+          <View style={styles.libraryLoadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.libraryLoadingText}>Loading images...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={sharedImages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderLibraryImageItem}
+            numColumns={2}
+            contentContainerStyle={styles.libraryImagesList}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.libraryEmptyState}>
+                <Text style={styles.libraryEmptyIcon}>🖼️</Text>
+                <Text style={styles.libraryEmptyText}>No images found</Text>
+                <Text style={styles.libraryEmptySubtext}>
+                  {libraryTab === 'sent' && "You haven't shared any images yet."}
+                  {libraryTab === 'received' && "You haven't received any images yet."}
+                  {libraryTab === 'all' && "No images to display."}
+                </Text>
+              </View>
+            }
+          />
+        )}
+      </View>
+    </View>
+  );
+
+  const renderSettingsTab = () => (
+    <View style={styles.tabContent}>
+      <View style={styles.settingsContent}>
+        <Text style={styles.tabTitle}>Settings</Text>
+        
+        <View style={styles.settingsList}>
+          <TouchableOpacity 
+            style={styles.settingsItem}
+            onPress={() => navigation.navigate('Settings' as never)}
+          >
+            <View style={styles.settingsIcon}>
+              <Text style={styles.settingsIconText}>⚙️</Text>
+            </View>
+            <View style={styles.settingsItemContent}>
+              <Text style={styles.settingsItemTitle}>App Settings</Text>
+              <Text style={styles.settingsItemSubtitle}>Server configuration and preferences</Text>
+            </View>
+            <Text style={styles.settingsChevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.settingsItem}
+            onPress={() => navigation.navigate('NotificationSettings' as never)}
+          >
+            <View style={styles.settingsIcon}>
+              <Text style={styles.settingsIconText}>🔔</Text>
+            </View>
+            <View style={styles.settingsItemContent}>
+              <Text style={styles.settingsItemTitle}>Notifications</Text>
+              <Text style={styles.settingsItemSubtitle}>Manage notification preferences</Text>
+            </View>
+            <Text style={styles.settingsChevron}>›</Text>
+          </TouchableOpacity>
+
+
+          <TouchableOpacity style={[styles.settingsItem, styles.dangerItem]} onPress={handleLogout}>
+            <View style={styles.settingsIcon}>
+              <Text style={styles.settingsIconText}>🚪</Text>
+            </View>
+            <View style={styles.settingsItemContent}>
+              <Text style={[styles.settingsItemTitle, styles.dangerText]}>Sign Out</Text>
+              <Text style={styles.settingsItemSubtitle}>Log out of your account</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
   if (!selectedChat) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>ConnectX</Text>
-            {totalUnreadCount > 0 && (
+            {totalUnreadCount > 0 && activeTab === 'chats' && (
               <View style={styles.totalUnreadBadge}>
                 <Text style={styles.totalUnreadText}>
                   {totalUnreadCount > 99 ? '99+' : totalUnreadCount.toString()}
@@ -897,54 +1152,51 @@ export const ChatScreen: React.FC = () => {
               </View>
             )}
           </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              style={styles.libraryButton}
-              onPress={() => navigation.navigate('DigitalLibrary' as never)}
-            >
-              <Text style={styles.libraryText}>🖼️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.notificationButton}
-              onPress={() => navigation.navigate('NotificationSettings' as never)}
-            >
-              <Text style={styles.notificationText}>🔔</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.settingsButton}
-              onPress={() => navigation.navigate('Settings' as never)}
-            >
-              <Text style={styles.settingsText}>Settings</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
-        <View style={styles.conversationsList}>
-          <Text style={styles.panelTitle}>Conversations</Text>
-          <FlatList
-            data={conversations}
-            keyExtractor={(item) => item.id}
-            renderItem={renderConversationItem}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No conversations yet</Text>
-              </View>
-            }
-          />
+        {/* Tab Content */}
+        {renderTabContent()}
+
+        {/* Bottom Tab Bar */}
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'chats' && styles.activeTabItem]}
+            onPress={() => setActiveTab('chats')}
+          >
+            <Text style={[styles.tabIcon, activeTab === 'chats' && styles.activeTabIcon]}>💬</Text>
+            <Text style={[styles.tabLabel, activeTab === 'chats' && styles.activeTabLabel]}>
+              Chats
+              {totalUnreadCount > 0 && (
+                <Text style={styles.tabBadgeText}> ({totalUnreadCount})</Text>
+              )}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'library' && styles.activeTabItem]}
+            onPress={() => setActiveTab('library')}
+          >
+            <Text style={[styles.tabIcon, activeTab === 'library' && styles.activeTabIcon]}>🖼️</Text>
+            <Text style={[styles.tabLabel, activeTab === 'library' && styles.activeTabLabel]}>Library</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'settings' && styles.activeTabItem]}
+            onPress={() => setActiveTab('settings')}
+          >
+            <Text style={[styles.tabIcon, activeTab === 'settings' && styles.activeTabIcon]}>⚙️</Text>
+            <Text style={[styles.tabLabel, activeTab === 'settings' && styles.activeTabLabel]}>Settings</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Show chat view when conversation is selected
-  const selectedConv = conversations.find(c => c.id === selectedChat);
+  const renderChatView = () => {
+    const selectedConv = conversations.find(c => c.id === selectedChat);
 
-  return (
-    <SafeAreaView style={styles.container}>
+    return (
+      <View style={styles.chatViewContainer}>
       <View style={styles.chatHeader}>
         <TouchableOpacity
           style={styles.backButton}
@@ -1099,7 +1351,33 @@ export const ChatScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Image Viewer Modal */}
+      {/* Image Picker Modal */}
+      <Modal
+        visible={showImagePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowImagePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.imagePickerModal}>
+            <Text style={styles.modalTitle}>Add Photo</Text>
+            <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
+              <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
+              <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.imagePickerOption, styles.cancelOption]}
+              onPress={() => setShowImagePicker(false)}
+            >
+              <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chat Image Viewer Modal */}
       <Modal
         visible={!!selectedImage}
         transparent
@@ -1122,6 +1400,77 @@ export const ChatScreen: React.FC = () => {
           )}
         </View>
       </Modal>
+      
+      {/* Library Image Viewer Modal */}
+      <Modal
+        visible={!!selectedLibraryImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedLibraryImage(null)}
+      >
+        <View style={styles.libraryModalContainer}>
+          <View style={styles.libraryModalContent}>
+            <View style={styles.libraryModalHeader}>
+              <Text style={styles.libraryModalTitle} numberOfLines={1}>
+                {selectedLibraryImage?.originalName}
+              </Text>
+              <TouchableOpacity
+                style={styles.libraryCloseButton}
+                onPress={() => setSelectedLibraryImage(null)}
+              >
+                <Text style={styles.libraryCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedLibraryImage && (
+              <>
+                <Image
+                  source={{
+                    uri: selectedLibraryImage.url.startsWith('http')
+                      ? selectedLibraryImage.url
+                      : `https://tre.dextron04.in${selectedLibraryImage.url}`
+                  }}
+                  style={styles.libraryModalImage}
+                  resizeMode="contain"
+                />
+
+                <View style={styles.libraryModalInfo}>
+                  <View style={styles.libraryModalUserInfo}>
+                    <Text style={styles.libraryModalUserText}>
+                      {selectedLibraryImage.sender.id === user?.id
+                        ? `Shared with ${selectedLibraryImage.receiver.username}`
+                        : `Shared by ${selectedLibraryImage.sender.username}`
+                      }
+                    </Text>
+                    <Text style={styles.libraryModalDate}>
+                      {new Date(selectedLibraryImage.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+      </View>
+    );
+  };
+
+  // Main render
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading conversations...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {renderTabContent()}
     </SafeAreaView>
   );
 };
@@ -1145,14 +1494,12 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    ...theme.shadows.sm,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+    backgroundColor: theme.colors.background,
   },
   headerTitleContainer: {
     flexDirection: 'row',
@@ -1231,9 +1578,17 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeights.semibold,
     fontSize: theme.typography.fontSizes.sm,
   },
+  tabContent: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   conversationsList: {
     flex: 1,
-    backgroundColor: theme.colors.sidebar,
+    backgroundColor: theme.colors.background,
+  },
+  conversationsContainer: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
   },
   panelTitle: {
     fontSize: theme.typography.fontSizes.base,
@@ -1248,20 +1603,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.sidebarBorder,
-    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.md + 2,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    marginVertical: theme.spacing.xs,
     marginHorizontal: theme.spacing.sm,
-    marginVertical: theme.spacing.xs / 2,
+    ...theme.shadows.sm,
   },
   selectedConversation: {
-    backgroundColor: theme.colors.primary + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+    transform: [{scale: 0.98}],
   },
   unreadConversation: {
-    backgroundColor: theme.colors.surface + '40',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '30',
   },
   unreadAvatar: {
     backgroundColor: theme.colors.primary,
@@ -1416,6 +1772,10 @@ const styles = StyleSheet.create({
   offlineStatus: {
     fontSize: theme.typography.fontSizes.xs,
     color: theme.colors.textMuted,
+  },
+  chatViewContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
   },
   chatContainer: {
     flex: 1,
@@ -1628,5 +1988,295 @@ const styles = StyleSheet.create({
   fullScreenImage: {
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height * 0.8,
+  },
+  
+  // Tab Bar Styles
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    borderTopWidth: 0.5,
+    borderTopColor: theme.colors.borderLight,
+    paddingBottom: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    ...theme.shadows.md,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+  },
+  activeTabItem: {
+    backgroundColor: theme.colors.primary + '15',
+  },
+  tabIcon: {
+    fontSize: 22,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  activeTabIcon: {
+    transform: [{scale: 1.1}],
+  },
+  tabLabel: {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.textMuted,
+    fontWeight: theme.typography.fontWeights.medium,
+  },
+  activeTabLabel: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeights.semibold,
+  },
+  tabBadgeText: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeights.bold,
+  },
+  
+  // Library Tab Styles
+  libraryContent: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing['2xl'],
+  },
+  libraryTabContainer: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.xs,
+    marginBottom: theme.spacing.lg,
+  },
+  libraryTabItem: {
+    flex: 1,
+    paddingVertical: theme.spacing.sm,
+    alignItems: 'center',
+    borderRadius: theme.borderRadius.md,
+  },
+  activeLibraryTabItem: {
+    backgroundColor: theme.colors.primary,
+  },
+  libraryTabText: {
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
+    fontWeight: theme.typography.fontWeights.medium,
+  },
+  activeLibraryTabText: {
+    color: theme.colors.primaryForeground,
+    fontWeight: theme.typography.fontWeights.semibold,
+  },
+  libraryLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: theme.spacing.lg,
+    paddingVertical: theme.spacing['3xl'],
+  },
+  libraryLoadingText: {
+    fontSize: theme.typography.fontSizes.base,
+    color: theme.colors.textMuted,
+  },
+  libraryImagesList: {
+    paddingBottom: theme.spacing.lg,
+  },
+  libraryImageItem: {
+    flex: 0.48,
+    marginBottom: theme.spacing.lg,
+    marginHorizontal: '1%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    overflow: 'hidden',
+    ...theme.shadows.sm,
+  },
+  libraryImageThumb: {
+    width: '100%',
+    height: 120,
+    backgroundColor: theme.colors.muted,
+  },
+  libraryImageInfo: {
+    padding: theme.spacing.md,
+  },
+  libraryImageName: {
+    fontSize: theme.typography.fontSizes.sm,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  libraryImageUser: {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+  },
+  libraryImageFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  libraryImageDate: {
+    fontSize: theme.typography.fontSizes.xs - 1,
+    color: theme.colors.textMuted,
+  },
+  libraryStatusBadge: {
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.sm,
+  },
+  libraryStatusText: {
+    fontSize: theme.typography.fontSizes.xs - 1,
+    color: theme.colors.foreground,
+    fontWeight: theme.typography.fontWeights.semibold,
+  },
+  libraryEmptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: theme.spacing['3xl'] * 2,
+  },
+  libraryEmptyIcon: {
+    fontSize: 48,
+    marginBottom: theme.spacing.lg,
+  },
+  libraryEmptyText: {
+    fontSize: theme.typography.fontSizes.lg,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+  },
+  libraryEmptySubtext: {
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    opacity: 0.8,
+  },
+  libraryModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  libraryModalContent: {
+    width: Dimensions.get('window').width - theme.spacing['3xl'],
+    maxHeight: '90%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    overflow: 'hidden',
+  },
+  libraryModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  libraryModalTitle: {
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    flex: 1,
+  },
+  libraryCloseButton: {
+    padding: theme.spacing.sm,
+    marginLeft: theme.spacing.sm,
+  },
+  libraryCloseButtonText: {
+    fontSize: theme.typography.fontSizes.lg,
+    color: theme.colors.textMuted,
+    fontWeight: theme.typography.fontWeights.bold,
+  },
+  libraryModalImage: {
+    width: '100%',
+    height: 300,
+    backgroundColor: theme.colors.muted,
+  },
+  libraryModalInfo: {
+    padding: theme.spacing.lg,
+  },
+  libraryModalUserInfo: {
+    marginBottom: theme.spacing.lg,
+  },
+  libraryModalUserText: {
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  libraryModalDate: {
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
+  },
+  
+  // Settings Tab Styles
+  settingsContent: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing['2xl'],
+  },
+  settingsList: {
+    flex: 1,
+  },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md + 2,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    marginVertical: theme.spacing.xs,
+    ...theme.shadows.sm,
+  },
+  settingsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.muted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  settingsIconText: {
+    fontSize: 18,
+  },
+  settingsItemContent: {
+    flex: 1,
+  },
+  settingsItemTitle: {
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  settingsItemSubtitle: {
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
+  },
+  settingsChevron: {
+    fontSize: 20,
+    color: theme.colors.textMuted,
+    marginLeft: theme.spacing.sm,
+  },
+  dangerItem: {
+    marginTop: theme.spacing.lg,
+  },
+  dangerText: {
+    color: theme.colors.error,
+  },
+  
+  // Missing styles
+  messageTime: {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.xs / 2,
+  },
+  tabTitle: {
+    fontSize: theme.typography.fontSizes.xl,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.foreground,
+    textAlign: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  tabSubtitle: {
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    marginBottom: theme.spacing.xl,
   },
 });
