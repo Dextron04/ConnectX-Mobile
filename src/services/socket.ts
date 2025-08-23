@@ -33,6 +33,7 @@ class SocketService {
     console.log('🔌 Connecting to socket server:', this.baseURL);
     console.log('🔌 Socket config:', SOCKET_CONFIG);
     console.log('🔌 Auth token present:', !!token);
+    console.log('🔌 Auth token preview:', token ? token.substring(0, 20) + '...' : 'null');
 
     this.socket = io(this.baseURL, {
       ...SOCKET_CONFIG,
