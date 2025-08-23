@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectXAPI } from '../services/api';
-import { socketService } from '../services/socket';
+import socketService from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
 
 export const SettingsScreen: React.FC = () => {

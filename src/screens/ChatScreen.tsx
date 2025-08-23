@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { connectXAPI, Conversation, Message } from '../services/api';
-import { socketService } from '../services/socket';
+import socketService from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
 
 export const ChatScreen: React.FC = () => {
@@ -27,16 +27,37 @@ export const ChatScreen: React.FC = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(true); // Track if user is near bottom
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   
   const messagesEndRef = useRef<FlatList>(null);
   const { user, logout } = useAuth();
+  const isNearBottomRef = useRef(true);
+  const selectedChatRef = useRef<string | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(()=>{ isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
+  useEffect(()=>{ selectedChatRef.current = selectedChat; }, [selectedChat]);
+  useEffect(()=>{ messagesRef.current = messages; }, [messages]);
 
   // Load conversations on mount
   useEffect(() => {
+    console.log('🚀 ChatScreen mounted, loading conversations...');
     loadConversations();
     setupSocketListeners();
+    
+    // Check socket connection status
+    setTimeout(() => {
+      const status = socketService.getConnectionStatus();
+      console.log('🔌 Socket status on mount:', status);
+      if (!status.connected) {
+        console.warn('⚠️ Socket not connected! Real-time messages may not work.');
+      }
+    }, 1000);
 
     return () => {
+      console.log('🧹 Cleaning up socket listeners...');
       socketService.off('new-message');
       socketService.off('message-read');
       socketService.off('user-typing');
@@ -48,45 +69,62 @@ export const ChatScreen: React.FC = () => {
   // Load messages when chat is selected
   useEffect(() => {
     if (selectedChat) {
+      console.log('💬 Loading messages for conversation:', selectedChat);
+      const selectedConv = conversations.find(c => c.id === selectedChat);
+      console.log('🔍 Found conversation:', selectedConv ? {
+        id: selectedConv.id,
+        participantId: selectedConv.participant.id,
+        participantName: selectedConv.participant.username
+      } : 'Not found');
+      
       loadMessages(selectedChat);
       
       // Join conversation room
+      console.log('🏠 Joining conversation room:', selectedChat);
       socketService.emit('join-conversation', selectedChat);
       
       return () => {
+        console.log('🚪 Leaving conversation room:', selectedChat);
         // Leave conversation room
         socketService.emit('leave-conversation', selectedChat);
       };
     }
-  }, [selectedChat]);
+  }, [selectedChat, conversations]); // Added conversations dependency
 
-  // Auto-scroll to bottom when new messages arrive
+  // Smart auto-scroll - only scroll if user is near bottom
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && isNearBottom) {
+      console.log('📜 Smart auto-scroll triggered, message count:', messages.length);
+      // Use shorter timeout for smoother experience
       setTimeout(() => {
         messagesEndRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 50);
     }
-  }, [messages]);
+  }, [messages.length, isNearBottom]); // Only scroll when near bottom
 
   const loadConversations = async () => {
     try {
-      console.log('🔄 Loading conversations...');
-      setIsLoading(true);
-      const convs = await connectXAPI.getConversations();
-      console.log('✅ Loaded conversations:', convs.length, 'conversations');
-      console.log('📋 Conversations data:', JSON.stringify(convs, null, 2));
-      setConversations(convs);
+      console.log('🔄 Loading conversations from server...');
+      const fetchedConversations = await connectXAPI.getConversations();
+      setConversations(fetchedConversations);
+      console.log('✅ Conversations loaded:', fetchedConversations.length);
       
-      // Auto-select first conversation if available
-      if (convs.length > 0 && !selectedChat) {
-        console.log('🎯 Auto-selecting first conversation:', convs[0].id);
-        setSelectedChat(convs[0].id);
+      // Debug: Log conversation structure
+      if (fetchedConversations.length > 0) {
+        console.log('📋 First conversation structure:', {
+          id: fetchedConversations[0].id,
+          participant: {
+            id: fetchedConversations[0].participant.id,
+            username: fetchedConversations[0].participant.username
+          },
+          lastMessage: fetchedConversations[0].lastMessage
+        });
       }
     } catch (error: any) {
-      console.error('❌ Failed to load conversations:', error);
-      console.error('❌ Error details:', error.message);
-      Alert.alert('Error', `Failed to load conversations: ${error.message}`);
+      console.error('❌ Conversations API error:', error);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      Alert.alert('Error', 'Failed to load conversations');
     } finally {
       setIsLoading(false);
     }
@@ -94,78 +132,117 @@ export const ChatScreen: React.FC = () => {
 
   const loadMessages = async (conversationId: string) => {
     try {
+      console.log('📨 Loading messages for conversation ID:', conversationId);
       setIsLoadingMessages(true);
       const msgs = await connectXAPI.getMessages(conversationId);
       setMessages(msgs);
+      console.log('✅ Messages loaded:', msgs.length);
+      
+      if (msgs.length > 0) {
+        console.log('📝 Last message:', {
+          id: msgs[msgs.length - 1].id,
+          content: msgs[msgs.length - 1].content,
+          senderId: msgs[msgs.length - 1].senderId,
+          receiverId: msgs[msgs.length - 1].receiverId
+        });
+      }
     } catch (error: any) {
-      console.error('Failed to load messages:', error);
+      console.error('❌ Failed to load messages:', error);
       Alert.alert('Error', 'Failed to load messages');
     } finally {
       setIsLoadingMessages(false);
     }
   };
 
+  // Update conversation list locally when receiving new messages
+  const updateConversationLocally = (message: Message) => {
+    setConversations(prev => {
+      return prev.map(conv => {
+        // Check if this message affects this conversation
+        const isForThisConv = 
+          (message.senderId === user?.id && message.receiverId === conv.participant.id) ||
+          (message.receiverId === user?.id && message.senderId === conv.participant.id);
+          
+        if (isForThisConv) {
+          return {
+            ...conv,
+            lastMessage: {
+              content: message.content,
+              type: message.type,
+              sender: message.sender,
+              createdAt: message.createdAt
+            },
+            updatedAt: message.createdAt
+          };
+        }
+        return conv;
+      });
+    });
+  };
+
   const setupSocketListeners = () => {
-    // Listen for new messages
+    console.log('🔧 Setting up socket listeners (refresh)...');
+    // Clear previous to avoid duplicates
+    socketService.off('new-message');
+    socketService.off('message-read');
+    socketService.off('user-typing');
+    socketService.off('user-stopped-typing');
+    socketService.off('user-status-changed');
+
     socketService.on('new-message', (message: Message) => {
-      console.log('Received new message:', message);
-      
-      // Add message to current conversation
-      if (message.senderId !== user?.id || message.receiverId !== user?.id) {
+      const activeChat = selectedChatRef.current;
+      const currentUserId = user?.id;
+      const isForActive = activeChat && (
+        (message.senderId === currentUserId && message.receiverId && conversations.find(c=>c.id===activeChat)?.participant.id === message.receiverId) ||
+        (message.receiverId === currentUserId && conversations.find(c=>c.id===activeChat)?.participant.id === message.senderId)
+      );
+
+      if (isForActive) {
         setMessages(prev => {
-          // Avoid duplicates
-          if (prev.find(m => m.id === message.id)) {
-            return prev;
-          }
-          return [...prev, message];
+          if (prev.find(m=>m.id===message.id)) return prev;
+          const updated = [...prev, message];
+          return updated;
         });
-        
-        // Mark message as read if user is viewing this conversation and is the receiver
-        if (message.receiverId === user?.id && selectedChat === message.conversationId) {
-          setTimeout(() => {
-            connectXAPI.markMessageAsRead(message.id).catch(console.error);
-          }, 1000);
+        // Auto-scroll if user is near bottom or message is mine
+        if (isNearBottomRef.current || message.senderId === currentUserId) {
+          requestAnimationFrame(()=>messagesEndRef.current?.scrollToEnd({ animated: true }));
+        }
+        if (message.receiverId === currentUserId) {
+          setTimeout(()=>connectXAPI.markMessageAsRead(message.id).catch(()=>{}), 800);
+        }
+      } else {
+        // Increment unread for that conversation
+        const targetConv = conversations.find(conv =>
+          (message.senderId === conv.participant.id && message.receiverId === currentUserId) ||
+          (message.receiverId === conv.participant.id && message.senderId === currentUserId)
+        );
+        if (targetConv) {
+          setUnreadCounts(u => ({ ...u, [targetConv.id]: (u[targetConv.id]||0) + 1 }));
         }
       }
-      
-      // Update conversation list
-      loadConversations();
-    });
-    
-    // Listen for read receipts
-    socketService.on('message-read', ({ messageId, readAt }: { messageId: string, readAt: string }) => {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === messageId 
-            ? { ...msg, isRead: true, readAt }
-            : msg
-        )
-      );
+      updateConversationLocally(message);
     });
 
-    // Listen for typing indicators
-    socketService.on('user-typing', ({ userId, conversationId }: { userId: string; conversationId: string }) => {
-      if (conversationId === selectedChat && userId !== user?.id) {
+    socketService.on('message-read', ({ messageId, userId, readAt }) => {
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isRead: true, readAt: readAt || new Date().toISOString() } : m));
+    });
+
+    socketService.on('user-typing', ({ userId, conversationId }) => {
+      if (conversationId === selectedChatRef.current && userId !== user?.id) {
         setIsTyping(true);
-        setTimeout(() => setIsTyping(false), 3000);
+        typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(()=> setIsTyping(false), 2500);
       }
     });
 
-    socketService.on('user-stopped-typing', ({ userId, conversationId }: { userId: string; conversationId: string }) => {
-      if (conversationId === selectedChat && userId !== user?.id) {
+    socketService.on('user-stopped-typing', ({ userId, conversationId }) => {
+      if (conversationId === selectedChatRef.current && userId !== user?.id) {
         setIsTyping(false);
       }
     });
 
-    // Listen for user status changes
-    socketService.on('user-status-changed', ({ userId, isOnline }: { userId: string; isOnline: boolean }) => {
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.participant.id === userId 
-            ? { ...conv, participant: { ...conv.participant, isOnline } }
-            : conv
-        )
-      );
+    socketService.on('user-status-changed', ({ userId, isOnline }) => {
+      setConversations(prev => prev.map(c => c.participant.id === userId ? { ...c, participant: { ...c.participant, isOnline } } : c));
     });
   };
 
@@ -185,10 +262,21 @@ export const ChatScreen: React.FC = () => {
       const message = await connectXAPI.sendMessage(selectedConv.participant.id, messageContent);
       
       // Add message to current conversation
-      setMessages(prev => [...prev, message]);
+      setMessages(prev => {
+        const newMessages = [...prev, message];
+        console.log('📤 Message sent, total messages:', newMessages.length);
+        return newMessages;
+      });
       
-      // Update conversation list
-      loadConversations();
+      // Update conversation list locally instead of reloading
+      updateConversationLocally(message);
+      
+      // Immediately scroll to bottom after sending
+      setTimeout(() => {
+        messagesEndRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      
+      console.log('📤 Message sent and conversation updated locally');
     } catch (error: any) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message');
@@ -209,6 +297,37 @@ export const ChatScreen: React.FC = () => {
     );
   };
 
+  // Debug function to manually scroll to bottom
+  const scrollToBottom = () => {
+    console.log('🔄 Manual scroll to bottom triggered');
+    messagesEndRef.current?.scrollToEnd({ animated: true });
+    setIsNearBottom(true); // User manually scrolled to bottom
+  };
+
+  // Check if user is near the bottom of the conversation
+  const handleScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 120;
+    const isAtBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    if (isAtBottom !== isNearBottomRef.current) {
+      isNearBottomRef.current = isAtBottom;
+      setIsNearBottom(isAtBottom);
+    }
+  };
+
+  // Debug function to test socket connection
+  const testSocketConnection = () => {
+    console.log('🧪 Testing socket connection...');
+    const status = socketService.getConnectionStatus();
+    console.log('🔌 Socket status:', status);
+    
+    if (status.connected) {
+      Alert.alert('Socket Test', `Connected to: ${status.url}\nSocket ID: ${status.socketId}`);
+    } else {
+      Alert.alert('Socket Test', 'Socket is not connected! Real-time messages will not work.');
+    }
+  };
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -226,45 +345,31 @@ export const ChatScreen: React.FC = () => {
     }
   };
 
-  const renderConversationItem = useCallback(({ item }: { item: Conversation }) => (
-    <TouchableOpacity
-      style={[
-        styles.conversationItem,
-        selectedChat === item.id && styles.selectedConversation
-      ]}
-      onPress={() => setSelectedChat(item.id)}
-    >
-      <View style={styles.avatarContainer}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {item.participant.username?.[0]?.toUpperCase() || '?'}
-          </Text>
+  // Show unread badge on conversation list
+  const renderConversationItem = useCallback(({ item }: { item: Conversation }) => {
+    const unread = unreadCounts[item.id] || 0;
+    return (
+      <TouchableOpacity
+        style={[styles.conversationItem, selectedChat === item.id && styles.selectedConversation]}
+        onPress={() => setSelectedChat(item.id)}
+      >
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{item.participant.username?.[0]?.toUpperCase() || '?'}</Text></View>
+          {item.participant.isOnline && <View style={styles.onlineIndicator} />}
         </View>
-        {item.participant.isOnline && <View style={styles.onlineIndicator} />}
-      </View>
-      
-      <View style={styles.conversationInfo}>
-        <View style={styles.conversationHeader}>
-          <Text style={styles.username} numberOfLines={1}>
-            {item.participant.username}
-          </Text>
-          {item.lastMessage && (
-            <Text style={styles.messageTime}>
-              {formatLastMessageTime(item.lastMessage.createdAt)}
-            </Text>
-          )}
+        <View style={styles.conversationInfo}>
+          <View style={styles.conversationHeader}>
+            <Text style={styles.username} numberOfLines={1}>{item.participant.username}</Text>
+            {item.lastMessage && (<Text style={styles.messageTime}>{formatLastMessageTime(item.lastMessage.createdAt)}</Text>)}
+          </View>
+          {item.lastMessage && (<Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage.type === 'IMAGE' ? '📷 Image' : item.lastMessage.type === 'FILE' ? '📎 File' : item.lastMessage.content || 'Message'}</Text>)}
         </View>
-        
-        {item.lastMessage && (
-          <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage.type === 'IMAGE' ? '📷 Image' : 
-             item.lastMessage.type === 'FILE' ? '📎 File' : 
-             item.lastMessage.content || 'Message'}
-          </Text>
+        {unread > 0 && (
+          <View style={styles.unreadBadge}><Text style={styles.unreadText}>{unread > 99 ? '99+' : unread}</Text></View>
         )}
-      </View>
-    </TouchableOpacity>
-  ), [selectedChat]);
+      </TouchableOpacity>
+    );
+  }, [selectedChat, unreadCounts]);
 
   const renderMessageItem = useCallback(({ item }: { item: Message }) => {
     const isMyMessage = item.senderId === user?.id;
@@ -415,9 +520,17 @@ export const ChatScreen: React.FC = () => {
         >
           <Text style={styles.settingsText}>⚙️</Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.settingsButton, { marginLeft: 8 }]} 
+          onPress={testSocketConnection}
+        >
+          <Text style={styles.settingsText}>🔌</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView 
+        key={`chat-${selectedChat}-${messages.length}`} // Force re-render when conversation or message count changes
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -435,6 +548,13 @@ export const ChatScreen: React.FC = () => {
               style={styles.messagesList}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.messagesContainer}
+              removeClippedSubviews={false} // Prevent clipping issues
+              onScroll={handleScroll} // Track scroll position
+              scrollEventThrottle={100} // Throttle scroll events
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 10
+              }}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyStateText}>No messages yet</Text>
@@ -643,7 +763,22 @@ const styles = StyleSheet.create({
     color: '#10b981',
   },
   readStatusUnread: {
-    color: '#9ca3af',
+    color: '#6b7280',
+  },
+  unreadBadge: {
+    backgroundColor: '#ef4444',
+    minWidth: 22,
+    paddingHorizontal: 6,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  unreadText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   lastMessage: {
     fontSize: 14,

@@ -1,5 +1,14 @@
-import { io, Socket } from 'socket.io-client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { io, Socket } from 'socket.io-client    this.socket.on('connect', () => {
+      console.log('🔗 Socket connected:', this.socket?.id);
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      console.log('❌ Socket disconnected:', reason);
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('❌ Socket connection error:', error.message);
+    });cStorage from '@react-native-async-storage/async-storage';
 import { Message } from './api';
 import { SERVER_CONFIG, SOCKET_CONFIG } from '../config/server';
 
@@ -28,8 +37,6 @@ class SocketService {
 
     // Get token before connecting
     const token = await AsyncStorage.getItem('auth_token');
-    
-    console.log('🔌 Connecting to socket server:', this.baseURL);
 
     this.socket = io(this.baseURL, {
       ...SOCKET_CONFIG,
@@ -45,64 +52,61 @@ class SocketService {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('🔗 Socket connected:', this.socket?.id);
+      console.log('� Socket connected:', this.socket.id);
+      this.isConnected = true;
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('❌ Socket disconnected:', reason);
+      this.isConnected = false;
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('❌ Socket connection error:', error.message);
+      this.isConnected = false;
     });
 
     this.socket.on('error', (error) => {
       console.error('🔌 Socket error:', error);
     });
+
+    // Debug: Log all events
+    this.socket.onAny((event, ...args) => {
+      console.log(`🔌 Socket event: ${event}`, args);
+    });
   }
 
-  joinConversation(conversationId: string) {
-    if (this.socket?.connected) {
-      console.log('🏠 Joining conversation:', conversationId);
-      this.socket.emit('join-conversation', { conversationId });
-    }
-  }
-
-  leaveConversation(conversationId: string) {
-    if (this.socket?.connected) {
-      console.log('🚪 Leaving conversation:', conversationId);
-      this.socket.emit('leave-conversation', { conversationId });
-    }
-  }
-
-  sendTyping(conversationId: string, isTyping: boolean) {
-    if (this.socket?.connected) {
-      this.socket.emit('typing', { conversationId, isTyping });
-    }
-  }
-
-  markMessageAsRead(messageId: string) {
-    if (this.socket?.connected) {
-      this.socket.emit('mark-read', { messageId });
-    }
-  }
 
   on<K extends keyof SocketEvents>(event: K, callback: SocketEvents[K]) {
-    if (this.socket) {
-      this.socket.on(event as string, callback as any);
-    }
+    this.socket?.on(event as string, callback as (...args: any[]) => void);
   }
 
   off<K extends keyof SocketEvents>(event: K, callback?: SocketEvents[K]) {
-    if (this.socket) {
-      this.socket.off(event as string, callback as any);
+    if (callback) {
+      this.socket?.off(event as string, callback as (...args: any[]) => void);
+    } else {
+      this.socket?.off(event as string);
     }
   }
 
   emit(event: string, data?: any) {
-    if (this.socket?.connected) {
-      this.socket.emit(event, data);
-    }
+    this.socket?.emit(event, data);
+  }
+
+  joinConversation(conversationId: string) {
+    this.emit('join-conversation', { conversationId });
+  }
+
+  leaveConversation(conversationId: string) {
+    this.emit('leave-conversation', { conversationId });
+  }
+
+  sendTyping(conversationId: string, isTyping: boolean) {
+    this.emit('typing', { conversationId, isTyping });
+  }
+
+  markMessageAsRead(messageId: string) {
+    this.emit('mark-read', { messageId });
   }
 
   disconnect() {
@@ -123,7 +127,18 @@ class SocketService {
       socketId: this.socket?.id
     };
   }
+
+  testConnection(): void {
+    console.log('🔌 Testing socket connection...');
+    console.log('🔌 Status:', this.getConnectionStatus());
+
+    if (this.socket?.connected) {
+      this.socket.emit('ping', { timestamp: Date.now() });
+      console.log('🔌 Ping sent to server');
+    } else {
+      console.log('🔌 Socket not connected, cannot send ping');
+    }
+  }
 }
 
-const socketService = new SocketService();
-export default socketService;
+export const socketService = new SocketService();

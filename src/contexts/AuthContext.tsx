@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { connectXAPI, User } from '../services/api';
-import { socketService } from '../services/socket';
+import socketService from '../services/socket';
 import { notificationService } from '../services/notifications';
 
 interface AuthState {
