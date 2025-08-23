@@ -142,6 +142,13 @@ class ConnectXAPI {
     return response.data;
   }
 
+  async markMessageAsRead(messageId: string): Promise<void> {
+    await this.api.patch(`/messages/${messageId}`, {
+      isRead: true,
+      readAt: new Date().toISOString()
+    });
+  }
+
   async logout(): Promise<void> {
     await AsyncStorage.removeItem('auth_token');
     await AsyncStorage.removeItem('user');
@@ -216,6 +223,29 @@ class ConnectXAPI {
       }
       throw error;
     }
+  }
+
+  async getSharedImages(): Promise<any[]> {
+    try {
+      const response = await this.api.get('/shared-images');
+      return response.data.sharedImages || [];
+    } catch (error: any) {
+      console.error('Failed to fetch shared images:', error);
+      return [];
+    }
+  }
+
+  async uploadSharedImage(file: File, receiverId: string): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('receiverId', receiverId);
+    
+    const response = await this.api.post('/shared-images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
   }
 
   setBaseURL(url: string) {

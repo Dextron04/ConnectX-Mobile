@@ -38,6 +38,7 @@ export const ChatScreen: React.FC = () => {
 
     return () => {
       socketService.off('new-message');
+      socketService.off('message-read');
       socketService.off('user-typing');
       socketService.off('user-stopped-typing');
       socketService.off('user-status-changed');
@@ -118,10 +119,28 @@ export const ChatScreen: React.FC = () => {
           }
           return [...prev, message];
         });
+        
+        // Mark message as read if user is viewing this conversation and is the receiver
+        if (message.receiverId === user?.id && selectedChat === message.conversationId) {
+          setTimeout(() => {
+            connectXAPI.markMessageAsRead(message.id).catch(console.error);
+          }, 1000);
+        }
       }
       
       // Update conversation list
       loadConversations();
+    });
+    
+    // Listen for read receipts
+    socketService.on('message-read', ({ messageId, readAt }: { messageId: string, readAt: string }) => {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, isRead: true, readAt }
+            : msg
+        )
+      );
     });
 
     // Listen for typing indicators
@@ -286,12 +305,22 @@ export const ChatScreen: React.FC = () => {
           </Text>
         )}
         
-        <Text style={[
-          styles.messageTime,
-          isMyMessage ? styles.myMessageTime : styles.otherMessageTime
-        ]}>
-          {formatTime(item.createdAt)}
-        </Text>
+        <View style={styles.messageFooter}>
+          <Text style={[
+            styles.messageTime,
+            isMyMessage ? styles.myMessageTime : styles.otherMessageTime
+          ]}>
+            {formatTime(item.createdAt)}
+          </Text>
+          {isMyMessage && (
+            <Text style={[
+              styles.readStatus,
+              item.isRead ? styles.readStatusRead : styles.readStatusUnread
+            ]}>
+              {item.isRead ? '✓✓' : '✓'}
+            </Text>
+          )}
+        </View>
       </View>
     );
   }, [user?.id]);
@@ -314,6 +343,12 @@ export const ChatScreen: React.FC = () => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>ConnectX</Text>
           <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.libraryButton} 
+              onPress={() => navigation.navigate('DigitalLibrary' as never)}
+            >
+              <Text style={styles.libraryText}>🖼️</Text>
+            </TouchableOpacity>
             <TouchableOpacity 
               style={styles.notificationButton} 
               onPress={() => navigation.navigate('NotificationSettings' as never)}
@@ -481,6 +516,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  libraryButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: '#10b981',
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  libraryText: {
+    fontSize: 16,
+  },
   notificationButton: {
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -582,6 +628,22 @@ const styles = StyleSheet.create({
   messageTime: {
     fontSize: 12,
     color: '#6b7280',
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  readStatus: {
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  readStatusRead: {
+    color: '#10b981',
+  },
+  readStatusUnread: {
+    color: '#9ca3af',
   },
   lastMessage: {
     fontSize: 14,

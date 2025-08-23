@@ -7,6 +7,7 @@ import { LoginScreen } from './src/screens/LoginScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
+import { DigitalLibraryScreen } from './src/screens/DigitalLibraryScreen';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
 const Stack = createStackNavigator();
@@ -32,6 +33,7 @@ const AppNavigator = () => {
             <Stack.Screen name="Chat" component={ChatScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
+            <Stack.Screen name="DigitalLibrary" component={DigitalLibraryScreen} />
           </>
         ) : (
           <>
