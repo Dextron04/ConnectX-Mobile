@@ -28,7 +28,7 @@ class SocketService {
 
     // Get token before connecting
     const token = await AsyncStorage.getItem('auth_token');
-    
+
     console.log('🔌 Connecting to socket server:', this.baseURL);
 
     this.socket = io(this.baseURL, {
@@ -77,7 +77,7 @@ class SocketService {
 
   sendTyping(conversationId: string, isTyping: boolean) {
     if (this.socket?.connected) {
-  this.socket.emit(isTyping ? 'typing-start' : 'typing-stop', { conversationId });
+      this.socket.emit(isTyping ? 'typing-start' : 'typing-stop', { conversationId });
     }
   }
 

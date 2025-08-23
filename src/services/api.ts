@@ -147,10 +147,10 @@ class ConnectXAPI {
       type,
     });
     // Some server routes wrap message inside { message }
-  const msg = response.data.message || response.data;
-  // Ensure conversationId exists on message for downstream logic
-  if (!msg.conversationId) msg.conversationId = conversationId;
-  return msg;
+    const msg = response.data.message || response.data;
+    // Ensure conversationId exists on message for downstream logic
+    if (!msg.conversationId) msg.conversationId = conversationId;
+    return msg;
   }
 
   async markMessageAsRead(messageId: string): Promise<void> {
@@ -250,7 +250,7 @@ class ConnectXAPI {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('receiverId', receiverId);
-    
+
     const response = await this.api.post('/shared-images', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

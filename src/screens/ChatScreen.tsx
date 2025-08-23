@@ -29,7 +29,7 @@ export const ChatScreen: React.FC = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true); // Track if user is near bottom
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  
+
   const messagesEndRef = useRef<FlatList>(null);
   const { user, logout } = useAuth();
   const isNearBottomRef = useRef(true);
@@ -37,16 +37,16 @@ export const ChatScreen: React.FC = () => {
   const messagesRef = useRef<Message[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(()=>{ isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
-  useEffect(()=>{ selectedChatRef.current = selectedChat; }, [selectedChat]);
-  useEffect(()=>{ messagesRef.current = messages; }, [messages]);
+  useEffect(() => { isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
+  useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   // Load conversations on mount
   useEffect(() => {
     console.log('🚀 ChatScreen mounted, loading conversations...');
     loadConversations();
     setupSocketListeners();
-    
+
     // Check socket connection status
     setTimeout(() => {
       const status = socketService.getConnectionStatus();
@@ -76,13 +76,13 @@ export const ChatScreen: React.FC = () => {
         participantId: selectedConv.participant.id,
         participantName: selectedConv.participant.username
       } : 'Not found');
-      
+
       loadMessages(selectedChat);
-      
+
       // Join conversation room
       console.log('🏠 Joining conversation room:', selectedChat);
       socketService.emit('join-conversation', selectedChat);
-      
+
       return () => {
         console.log('🚪 Leaving conversation room:', selectedChat);
         // Leave conversation room
@@ -108,7 +108,7 @@ export const ChatScreen: React.FC = () => {
       const fetchedConversations = await connectXAPI.getConversations();
       setConversations(fetchedConversations);
       console.log('✅ Conversations loaded:', fetchedConversations.length);
-      
+
       // Debug: Log conversation structure
       if (fetchedConversations.length > 0) {
         console.log('📋 First conversation structure:', {
@@ -137,7 +137,7 @@ export const ChatScreen: React.FC = () => {
       const msgs = await connectXAPI.getMessages(conversationId);
       setMessages(msgs);
       console.log('✅ Messages loaded:', msgs.length);
-      
+
       if (msgs.length > 0) {
         console.log('📝 Last message:', {
           id: msgs[msgs.length - 1].id,
@@ -159,10 +159,10 @@ export const ChatScreen: React.FC = () => {
     setConversations(prev => {
       return prev.map(conv => {
         // Check if this message affects this conversation
-        const isForThisConv = 
+        const isForThisConv =
           (message.senderId === user?.id && message.receiverId === conv.participant.id) ||
           (message.receiverId === user?.id && message.senderId === conv.participant.id);
-          
+
         if (isForThisConv) {
           return {
             ...conv,
@@ -193,22 +193,22 @@ export const ChatScreen: React.FC = () => {
       const activeChat = selectedChatRef.current;
       const currentUserId = user?.id;
       const isForActive = activeChat && (
-        (message.senderId === currentUserId && message.receiverId && conversations.find(c=>c.id===activeChat)?.participant.id === message.receiverId) ||
-        (message.receiverId === currentUserId && conversations.find(c=>c.id===activeChat)?.participant.id === message.senderId)
+        (message.senderId === currentUserId && message.receiverId && conversations.find(c => c.id === activeChat)?.participant.id === message.receiverId) ||
+        (message.receiverId === currentUserId && conversations.find(c => c.id === activeChat)?.participant.id === message.senderId)
       );
 
       if (isForActive) {
         setMessages(prev => {
-          if (prev.find(m=>m.id===message.id)) return prev;
+          if (prev.find(m => m.id === message.id)) return prev;
           const updated = [...prev, message];
           return updated;
         });
         // Auto-scroll if user is near bottom or message is mine
         if (isNearBottomRef.current || message.senderId === currentUserId) {
-          requestAnimationFrame(()=>messagesEndRef.current?.scrollToEnd({ animated: true }));
+          requestAnimationFrame(() => messagesEndRef.current?.scrollToEnd({ animated: true }));
         }
         if (message.receiverId === currentUserId) {
-          setTimeout(()=>connectXAPI.markMessageAsRead(message.id).catch(()=>{}), 800);
+          setTimeout(() => connectXAPI.markMessageAsRead(message.id).catch(() => { }), 800);
         }
       } else {
         // Increment unread for that conversation
@@ -217,7 +217,7 @@ export const ChatScreen: React.FC = () => {
           (message.receiverId === conv.participant.id && message.senderId === currentUserId)
         );
         if (targetConv) {
-          setUnreadCounts(u => ({ ...u, [targetConv.id]: (u[targetConv.id]||0) + 1 }));
+          setUnreadCounts(u => ({ ...u, [targetConv.id]: (u[targetConv.id] || 0) + 1 }));
         }
       }
       updateConversationLocally(message);
@@ -231,7 +231,7 @@ export const ChatScreen: React.FC = () => {
       if (conversationId === selectedChatRef.current && userId !== user?.id) {
         setIsTyping(true);
         typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(()=> setIsTyping(false), 2500);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2500);
       }
     });
 
@@ -261,6 +261,23 @@ export const ChatScreen: React.FC = () => {
     try {
       // Stop typing indicator
       socketService.sendTyping(selectedConv.id, false);
+
+      // Create temporary optimistic message placeholder
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimisticMessage: Message = {
+        id: tempId,
+        conversationId: selectedConv.id,
+        content: messageContent,
+        type: 'TEXT',
+        senderId: user!.id,
+        receiverId: selectedConv.participant.id,
+        createdAt: new Date().toISOString(),
+        sender: user!,
+        isRead: false,
+      } as Message;
+
+      setMessages(prev => [...prev, optimisticMessage]);
+
       // Optimistic emit via socket for real-time delivery
       if (socketService.isConnected()) {
         socketService.sendMessage({
@@ -270,23 +287,31 @@ export const ChatScreen: React.FC = () => {
           type: 'TEXT'
         });
       }
+
       const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
-      
-      // Add message to current conversation
+
+      // Replace optimistic message if still present
+      setMessages(prev => prev.map(m => m.id === tempId ? message : m));
+
+      // Add message only if not already added by socket event
       setMessages(prev => {
+        if (prev.find(m => m.id === message.id)) {
+          console.log('♻️ Message already present (socket delivered first), skipping duplicate add');
+          return prev;
+        }
         const newMessages = [...prev, message];
-        console.log('📤 Message sent, total messages:', newMessages.length);
+        console.log('📤 Message sent (REST), added to list. Total messages:', newMessages.length);
         return newMessages;
       });
-      
+
       // Update conversation list locally instead of reloading
       updateConversationLocally(message);
-      
+
       // Immediately scroll to bottom after sending
       setTimeout(() => {
         messagesEndRef.current?.scrollToEnd({ animated: true });
       }, 100);
-      
+
       console.log('📤 Message sent and conversation updated locally');
     } catch (error: any) {
       console.error('Failed to send message:', error);
@@ -331,7 +356,7 @@ export const ChatScreen: React.FC = () => {
     console.log('🧪 Testing socket connection...');
     const status = socketService.getConnectionStatus();
     console.log('🔌 Socket status:', status);
-    
+
     if (status.connected) {
       Alert.alert('Socket Test', `Connected to: ${status.url}\nSocket ID: ${status.socketId}`);
     } else {
@@ -348,7 +373,7 @@ export const ChatScreen: React.FC = () => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffInHours < 24) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else {
@@ -384,7 +409,7 @@ export const ChatScreen: React.FC = () => {
 
   const renderMessageItem = useCallback(({ item }: { item: Message }) => {
     const isMyMessage = item.senderId === user?.id;
-    
+
     return (
       <View style={[
         styles.messageContainer,
@@ -393,7 +418,7 @@ export const ChatScreen: React.FC = () => {
         {!isMyMessage && (
           <Text style={styles.senderName}>{item.sender.username}</Text>
         )}
-        
+
         {item.type === 'TEXT' && (
           <Text style={[
             styles.messageContent,
@@ -402,7 +427,7 @@ export const ChatScreen: React.FC = () => {
             {item.content}
           </Text>
         )}
-        
+
         {item.type === 'IMAGE' && (
           <Text style={[
             styles.messageContent,
@@ -411,7 +436,7 @@ export const ChatScreen: React.FC = () => {
             📷 Image
           </Text>
         )}
-        
+
         {item.type === 'FILE' && (
           <Text style={[
             styles.messageContent,
@@ -420,7 +445,7 @@ export const ChatScreen: React.FC = () => {
             📎 {item.fileName || 'File'}
           </Text>
         )}
-        
+
         <View style={styles.messageFooter}>
           <Text style={[
             styles.messageTime,
@@ -459,20 +484,20 @@ export const ChatScreen: React.FC = () => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>ConnectX</Text>
           <View style={styles.headerButtons}>
-            <TouchableOpacity 
-              style={styles.libraryButton} 
+            <TouchableOpacity
+              style={styles.libraryButton}
               onPress={() => navigation.navigate('DigitalLibrary' as never)}
             >
               <Text style={styles.libraryText}>🖼️</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.notificationButton} 
+            <TouchableOpacity
+              style={styles.notificationButton}
               onPress={() => navigation.navigate('NotificationSettings' as never)}
             >
               <Text style={styles.notificationText}>🔔</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.settingsButton} 
+            <TouchableOpacity
+              style={styles.settingsButton}
               onPress={() => navigation.navigate('Settings' as never)}
             >
               <Text style={styles.settingsText}>Settings</Text>
@@ -507,13 +532,13 @@ export const ChatScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => setSelectedChat(null)}
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        
+
         <View style={styles.chatHeaderInfo}>
           <Text style={styles.chatHeaderTitle} numberOfLines={1}>
             {selectedConv?.participant.username}
@@ -525,22 +550,22 @@ export const ChatScreen: React.FC = () => {
           )}
         </View>
 
-        <TouchableOpacity 
-          style={styles.settingsButton} 
+        <TouchableOpacity
+          style={styles.settingsButton}
           onPress={() => navigation.navigate('Settings' as never)}
         >
           <Text style={styles.settingsText}>⚙️</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.settingsButton, { marginLeft: 8 }]} 
+
+        <TouchableOpacity
+          style={[styles.settingsButton, { marginLeft: 8 }]}
           onPress={testSocketConnection}
         >
           <Text style={styles.settingsText}>🔌</Text>
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         key={`chat-${selectedChat}-${messages.length}`} // Force re-render when conversation or message count changes
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -573,21 +598,21 @@ export const ChatScreen: React.FC = () => {
                 </View>
               }
             />
-            
+
             {isTyping && (
               <View style={styles.typingIndicator}>
                 <Text style={styles.typingText}>{selectedConv?.participant.username} is typing...</Text>
               </View>
             )}
-            
+
             <View style={styles.messageInput}>
               <TextInput
                 style={styles.textInput}
                 value={newMessage}
-                onChangeText={(text)=>{
+                onChangeText={(text) => {
                   setNewMessage(text);
                   if (selectedConv) {
-                    socketService.sendTyping(selectedConv.id, text.trim().length>0);
+                    socketService.sendTyping(selectedConv.id, text.trim().length > 0);
                   }
                 }}
                 placeholder="Type a message..."
