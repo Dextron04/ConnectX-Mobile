@@ -8,12 +8,15 @@ import {
   Alert,
   SafeAreaView,
   Switch,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectXAPI } from '../services/api';
 import socketService from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
+import { theme } from '../styles/theme';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -125,7 +128,7 @@ export const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>Settings</Text>
-{!isAuthenticated && !isSaving && (
+        {!isAuthenticated && !isSaving && (
           <TouchableOpacity 
             style={styles.continueButton}
             onPress={() => navigation.navigate('Login' as never)}
@@ -146,6 +149,7 @@ export const SettingsScreen: React.FC = () => {
               value={serverURL}
               onChangeText={setServerURL}
               placeholder="localhost:3456 or your-server.com"
+              placeholderTextColor="#6B7280"
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
@@ -165,8 +169,8 @@ export const SettingsScreen: React.FC = () => {
             <Switch
               value={isSecure}
               onValueChange={setIsSecure}
-              trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
-              thumbColor={isSecure ? '#3b82f6' : '#9ca3af'}
+              trackColor={{ false: '#4B5563', true: '#60A5FA' }}
+              thumbColor={isSecure ? '#3B82F6' : '#9CA3AF'}
             />
           </View>
 
@@ -212,163 +216,179 @@ export const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   header: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: theme.colors.sidebar,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: theme.colors.sidebarBorder,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    ...theme.shadows.sm,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: theme.typography.fontSizes.xl,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.sidebarForeground,
     flex: 1,
     textAlign: 'center',
   },
   backButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
   },
   backButtonText: {
-    fontSize: 16,
-    color: '#3b82f6',
-    fontWeight: '600',
+    fontSize: theme.typography.fontSizes.base,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
   continueButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#10b981',
-    borderRadius: 6,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.success,
+    borderRadius: theme.borderRadius.sm,
+    ...theme.shadows.sm,
   },
   continueButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: theme.colors.foreground,
+    fontWeight: theme.typography.fontWeights.semibold,
+    fontSize: theme.typography.fontSizes.sm,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 24,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing['2xl'],
   },
   section: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing['2xl'],
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    ...theme.shadows.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 16,
+    fontSize: theme.typography.fontSizes.lg,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.lg,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: theme.spacing.lg,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSizes.sm,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.sm,
   },
   input: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: theme.colors.input,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 8,
+    borderColor: theme.colors.inputBorder,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm + 2,
+    fontSize: theme.typography.fontSizes.base,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.foreground,
+    ...theme.shadows.sm,
   },
   helpText: {
-    fontSize: 12,
-    color: '#6b7280',
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.textMuted,
     fontStyle: 'italic',
+    lineHeight: theme.typography.lineHeights.normal * theme.typography.fontSizes.xs,
   },
   switchGroup: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: theme.spacing.lg,
+    paddingVertical: theme.spacing.xs,
   },
   switchLabelContainer: {
     flex: 1,
-    marginRight: 16,
+    marginRight: theme.spacing.lg,
   },
   switchLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSizes.sm,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.xs,
   },
   switchDescription: {
-    fontSize: 12,
-    color: '#6b7280',
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.textMuted,
   },
   urlPreview: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
+    backgroundColor: theme.colors.muted,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
   },
   urlPreviewLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSizes.xs,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
   },
   urlPreviewText: {
-    fontSize: 14,
+    fontSize: theme.typography.fontSizes.sm,
     fontFamily: 'monospace',
-    color: '#374151',
+    color: theme.colors.foreground,
   },
   buttonGroup: {
-    gap: 12,
-    marginBottom: 24,
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing['2xl'],
   },
   button: {
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
     alignItems: 'center',
+    ...theme.shadows.sm,
   },
   primaryButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: theme.colors.primary,
   },
   primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.primaryForeground,
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
   secondaryButton: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: theme.colors.card,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: theme.colors.borderLight,
   },
   secondaryButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.foreground,
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
   infoSection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    ...theme.shadows.sm,
   },
   infoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.sm,
   },
   infoText: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.textMuted,
   },
 });

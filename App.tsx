@@ -8,13 +8,13 @@ import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
 import { DigitalLibraryScreen } from './src/screens/DigitalLibraryScreen';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Text, Dimensions } from 'react-native';
 
 const Stack = createStackNavigator();
 
 const LoadingScreen = () => (
   <View style={styles.loadingContainer}>
-    <ActivityIndicator size="large" color="#3b82f6" />
+    <ActivityIndicator size="large" color="#3B82F6" />
   </View>
 );
 
@@ -60,6 +60,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#1F2937',
   },
 });

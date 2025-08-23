@@ -10,9 +10,12 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
+  Dimensions,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { theme } from '../styles/theme';
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -56,12 +59,12 @@ export const LoginScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>ConnectX Mobile</Text>
+        <Text style={styles.topBarTitle}>ConnectX</Text>
         <TouchableOpacity 
           style={styles.settingsButton}
           onPress={() => navigation.navigate('Settings' as never)}
         >
-          <Text style={styles.settingsButtonText}>⚙️ Server Settings</Text>
+          <Text style={styles.settingsButtonText}>Settings</Text>
         </TouchableOpacity>
       </View>
       
@@ -77,79 +80,82 @@ export const LoginScreen: React.FC = () => {
             </Text>
           </View>
 
-        <View style={styles.form}>
-          {!isLogin && (
+          <View style={styles.form}>
+            {!isLogin && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#888888"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
+            )}
+
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Name</Text>
+              <Text style={styles.label}>Email</Text>
               <TextInput
                 style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Enter your name"
-                autoCapitalize="words"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Enter your email"
+                placeholderTextColor="#888888"
+                keyboardType="email-address"
+                autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
-          )}
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your password"
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                placeholderTextColor="#888888"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
-          )}
 
-          <TouchableOpacity
-            style={[styles.submitButton, isLoading && styles.disabledButton]}
-            onPress={handleSubmit}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>
-                {isLogin ? 'Sign In' : 'Sign Up'}
-              </Text>
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
             )}
-          </TouchableOpacity>
 
-          <View style={styles.switchContainer}>
-            <Text style={styles.switchText}>
-              {isLogin ? "Don't have an account? " : 'Already have an account? '}
-            </Text>
-            <TouchableOpacity onPress={toggleMode}>
-              <Text style={styles.switchButtonText}>
-                {isLogin ? 'Sign Up' : 'Sign In'}
-              </Text>
+            <TouchableOpacity
+              style={[styles.submitButton, isLoading && styles.disabledButton]}
+              onPress={handleSubmit}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>
+                  {isLogin ? 'Sign In' : 'Sign Up'}
+                </Text>
+              )}
             </TouchableOpacity>
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchText}>
+                {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              </Text>
+              <TouchableOpacity onPress={toggleMode}>
+                <Text style={styles.switchButtonText}>
+                  {isLogin ? 'Sign Up' : 'Sign In'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -158,119 +164,127 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: theme.colors.border,
+    ...theme.shadows.sm,
   },
   topBarTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: theme.typography.fontSizes.lg,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.foreground,
   },
   settingsButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#6b7280',
-    borderRadius: 6,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius['2xl'],
+    ...theme.shadows.sm,
   },
   settingsButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: theme.colors.foreground,
+    fontSize: theme.typography.fontSizes.xs,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   formContainer: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: theme.spacing['2xl'],
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: theme.spacing['3xl'],
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSizes['3xl'],
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.foreground,
+    marginBottom: theme.spacing.sm,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: theme.typography.fontSizes.base,
+    color: theme.colors.mutedForeground,
     textAlign: 'center',
   },
   form: {
-    gap: 16,
+    gap: theme.spacing.lg,
   },
   inputContainer: {
-    gap: 8,
+    gap: theme.spacing.sm,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: theme.typography.fontSizes.sm,
+    fontWeight: theme.typography.fontWeights.semibold,
+    color: theme.colors.foreground,
   },
   input: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: theme.colors.input,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius['2xl'],
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    fontSize: 16,
+    borderColor: theme.colors.inputBorder,
+    fontSize: theme.typography.fontSizes.base,
+    color: theme.colors.foreground,
+    ...theme.shadows.sm,
   },
   errorContainer: {
-    backgroundColor: '#fee2e2',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#fecaca',
+    backgroundColor: theme.colors.error,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    opacity: 0.95,
+    ...theme.shadows.sm,
   },
   errorText: {
-    color: '#dc2626',
-    fontSize: 14,
+    color: theme.colors.foreground,
+    fontSize: theme.typography.fontSizes.sm,
     textAlign: 'center',
+    fontWeight: theme.typography.fontWeights.medium,
   },
   submitButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 14,
-    borderRadius: 8,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.sm + 2,
+    borderRadius: theme.borderRadius['2xl'],
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: theme.spacing.sm,
+    ...theme.shadows.md,
   },
   disabledButton: {
-    backgroundColor: '#9ca3af',
+    backgroundColor: theme.colors.mutedForeground,
+    opacity: 0.7,
   },
   submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.primaryForeground,
+    fontSize: theme.typography.fontSizes.base,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
   switchContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: theme.spacing.lg,
   },
   switchText: {
-    color: '#6b7280',
-    fontSize: 14,
+    color: theme.colors.mutedForeground,
+    fontSize: theme.typography.fontSizes.sm,
   },
   switchButtonText: {
-    color: '#3b82f6',
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.primary,
+    fontSize: theme.typography.fontSizes.sm,
+    fontWeight: theme.typography.fontWeights.semibold,
   },
 });
