@@ -49,6 +49,9 @@ export const ChatScreen: React.FC = () => {
   const autoScrollRetryRef = useRef(0);
   const contentSizeRef = useRef({ width: 0, height: 0 });
 
+  // Cache to prevent processing duplicate messages
+  const processedMessagesRef = useRef<Set<string>>(new Set());
+
   // Enhanced auto-scroll with multiple fallback strategies
   const performAutoScroll = (animated = true) => {
     const flatList = messagesEndRef.current;
@@ -202,6 +205,10 @@ export const ChatScreen: React.FC = () => {
   const loadMessages = async (conversationId: string) => {
     try {
       console.log('📨 Loading messages for conversation ID:', conversationId);
+
+      // Clear processed messages cache when switching conversations
+      processedMessagesRef.current.clear();
+
       setIsLoadingMessages(true);
       const msgs = await connectXAPI.getMessages(conversationId);
       setMessages(msgs);
@@ -265,6 +272,13 @@ export const ChatScreen: React.FC = () => {
     socketService.off('user-status-changed');
 
     socketService.on('new-message', (message: Message) => {
+      // Prevent duplicate processing
+      if (processedMessagesRef.current.has(message.id)) {
+        console.log('♻️ Duplicate message already processed, skipping:', message.id);
+        return;
+      }
+      processedMessagesRef.current.add(message.id);
+
       console.log('📨 Received new message via socket:', {
         id: message.id,
         type: message.type,
@@ -275,14 +289,14 @@ export const ChatScreen: React.FC = () => {
 
       const activeChat = selectedChatRef.current;
       const currentUserId = user?.id;
-      const isForActive = activeChat && (
-        (message.senderId === currentUserId && message.receiverId && conversations.find(c => c.id === activeChat)?.participant.id === message.receiverId) ||
-        (message.receiverId === currentUserId && conversations.find(c => c.id === activeChat)?.participant.id === message.senderId)
-      );
+
+      // Simplified routing: message belongs to active chat if conversation IDs match
+      const isForActive = activeChat && message.conversationId === activeChat;
 
       console.log('📨 Message routing:', {
         activeChat,
         currentUserId,
+        messageConversationId: message.conversationId,
         isForActive,
         messageSender: message.senderId,
         messageReceiver: message.receiverId
