@@ -36,6 +36,53 @@ export const ChatScreen: React.FC = () => {
   const selectedChatRef = useRef<string | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastAutoScrollMsgIdRef = useRef<string | null>(null);
+  const autoScrollRequestedRef = useRef(false);
+  const autoScrollRetryRef = useRef(0);
+  const contentSizeRef = useRef({ width: 0, height: 0 });
+
+  // Enhanced auto-scroll with multiple fallback strategies
+  const performAutoScroll = (animated = true) => {
+    const flatList = messagesEndRef.current;
+    if (!flatList) {
+      console.log('⚠️ performAutoScroll: No FlatList ref available');
+      return;
+    }
+
+    console.log(`🔄 performAutoScroll: Scrolling to newest message (animated: ${animated}, messages: ${messages.length})`);
+
+    // With inverted FlatList, scroll to top (offset 0) to show newest messages
+    try {
+      // @ts-ignore
+      flatList.scrollToOffset({ offset: 0, animated });
+      console.log('✅ scrollToOffset(0) executed');
+    } catch (e) {
+      console.log('❌ scrollToOffset failed:', e);
+    }
+
+    // Also try scrollToIndex to first item (newest message in inverted list)
+    try {
+      if (messages.length > 0) {
+        // @ts-ignore
+        flatList.scrollToIndex({ index: 0, animated });
+        console.log('✅ scrollToIndex(0) executed');
+      }
+    } catch (e) {
+      console.log('❌ scrollToIndex failed:', e);
+    }
+  };
+
+  const scheduleAutoScroll = () => {
+    if (autoScrollRetryRef.current > 2) return;
+    autoScrollRetryRef.current += 1;
+
+    // Immediate scroll to show latest message
+    performAutoScroll(true);
+
+    // Additional attempts to ensure it sticks
+    setTimeout(() => performAutoScroll(false), 50);
+    setTimeout(() => performAutoScroll(false), 150);
+  };
 
   useEffect(() => { isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
@@ -94,9 +141,9 @@ export const ChatScreen: React.FC = () => {
   useEffect(() => {
     if (messages.length > 0 && isNearBottom) {
       console.log('📜 Smart auto-scroll triggered, message count:', messages.length);
-      // Use shorter timeout for smoother experience
+      // Use inverted FlatList auto-scroll for smoother experience
       setTimeout(() => {
-        messagesEndRef.current?.scrollToEnd({ animated: true });
+        performAutoScroll(true);
       }, 50);
     }
   }, [messages.length, isNearBottom]); // Only scroll when near bottom
@@ -135,6 +182,12 @@ export const ChatScreen: React.FC = () => {
       setIsLoadingMessages(true);
       const msgs = await connectXAPI.getMessages(conversationId);
       setMessages(msgs);
+      // Force scroll after initial load for inverted FlatList
+      requestAnimationFrame(() => {
+        performAutoScroll(false);
+        isNearBottomRef.current = true;
+        setIsNearBottom(true);
+      });
       console.log('✅ Messages loaded:', msgs.length);
 
       if (msgs.length > 0) {
@@ -204,7 +257,7 @@ export const ChatScreen: React.FC = () => {
         });
         // Auto-scroll if user is near bottom or message is mine
         if (isNearBottomRef.current || message.senderId === currentUserId) {
-          requestAnimationFrame(() => messagesEndRef.current?.scrollToEnd({ animated: true }));
+          setTimeout(() => performAutoScroll(true), 50);
         }
         if (message.receiverId === currentUserId) {
           setTimeout(() => connectXAPI.markMessageAsRead(message.id).catch(() => { }), 800);
@@ -269,6 +322,8 @@ export const ChatScreen: React.FC = () => {
         isRead: false,
       } as Message;
       setMessages(prev => [...prev, optimisticMessage]);
+      // Immediate scroll after adding optimistic message
+      setTimeout(() => performAutoScroll(false), 10);
       if (socketService.isConnected()) {
         socketService.sendMessage({
           conversationId: selectedConv.id,
@@ -283,7 +338,8 @@ export const ChatScreen: React.FC = () => {
         ? prev.map(m => m.id === tempId ? message : m)
         : prev.map(m => m.id === tempId ? message : m));
       updateConversationLocally(message);
-      setTimeout(() => messagesEndRef.current?.scrollToEnd({ animated: true }), 80);
+      // Force scroll to newest message using inverted FlatList logic
+      setTimeout(() => performAutoScroll(true), 100);
     } catch (error: any) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message');
@@ -309,18 +365,20 @@ export const ChatScreen: React.FC = () => {
   // Debug function to manually scroll to bottom
   const scrollToBottom = () => {
     console.log('🔄 Manual scroll to bottom triggered');
-    messagesEndRef.current?.scrollToEnd({ animated: true });
+    performAutoScroll(true);
     setIsNearBottom(true); // User manually scrolled to bottom
   };
 
-  // Check if user is near the bottom of the conversation
+  // Check if user is near the bottom (top of inverted list) of the conversation
   const handleScroll = (event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const paddingToBottom = 120;
-    const isAtBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    // For inverted FlatList, "bottom" means near offset 0
+    const paddingToTop = 120;
+    const isAtBottom = contentOffset.y <= paddingToTop; // Near top of inverted list = bottom of chat
     if (isAtBottom !== isNearBottomRef.current) {
       isNearBottomRef.current = isAtBottom;
       setIsNearBottom(isAtBottom);
+      console.log('📍 Scroll position changed, near bottom (inverted):', isAtBottom);
     }
   };
 
@@ -551,18 +609,20 @@ export const ChatScreen: React.FC = () => {
           <>
             <FlatList
               ref={messagesEndRef}
-              data={messages}
+              data={messages.slice().reverse()} // Reverse for inverted display
               keyExtractor={(item) => item.id}
               renderItem={renderMessageItem}
               style={styles.messagesList}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.messagesContainer}
-              removeClippedSubviews={false} // Prevent clipping issues
-              onScroll={handleScroll} // Track scroll position
-              scrollEventThrottle={100} // Throttle scroll events
-              maintainVisibleContentPosition={{
-                minIndexForVisible: 0,
-                autoscrollToTopThreshold: 10
+              removeClippedSubviews={false}
+              inverted // This makes newest messages appear at bottom
+              onScroll={handleScroll}
+              scrollEventThrottle={32}
+              onContentSizeChange={(width, height) => {
+                contentSizeRef.current = { width, height };
+                // With inverted, we don't need aggressive scrolling
+                // New messages automatically appear at bottom
               }}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
