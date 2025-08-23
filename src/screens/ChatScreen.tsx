@@ -669,59 +669,65 @@ export const ChatScreen: React.FC = () => {
 
     return (
       <View style={[
-        styles.messageContainer,
-        isMyMessage ? styles.myMessage : styles.otherMessage
+        styles.messageWrapper,
+        isMyMessage ? styles.myMessageWrapper : styles.otherMessageWrapper
       ]}>
-        {!isMyMessage && (
-          <Text style={styles.senderName}>{item.sender.username}</Text>
-        )}
+        <View style={[
+          styles.messageContainer,
+          isMyMessage ? styles.myMessage : styles.otherMessage
+        ]}>
+          {!isMyMessage && (
+            <Text style={styles.senderName}>{item.sender.username}</Text>
+          )}
 
-        {item.type === 'TEXT' && (
-          <Text style={[
-            styles.messageContent,
-            isMyMessage ? styles.myMessageText : styles.otherMessageText
-          ]}>
-            {item.content}
-          </Text>
-        )}
+          {item.type === 'TEXT' && (
+            <Text style={[
+              styles.messageContent,
+              isMyMessage ? styles.myMessageText : styles.otherMessageText
+            ]}>
+              {item.content}
+            </Text>
+          )}
 
-        {item.type === 'IMAGE' && (
-          <TouchableOpacity
-            onPress={() => {
-              const imageUrl = item.imageUrl?.startsWith('http')
-                ? item.imageUrl
-                : `https://tre.dextron04.in${item.imageUrl}`;
-              setSelectedImage(imageUrl);
-            }}
-            style={styles.imageMessageContainer}
-          >
-            <Image
-              source={{
-                uri: item.imageUrl?.startsWith('http')
+          {item.type === 'IMAGE' && (
+            <TouchableOpacity
+              onPress={() => {
+                const imageUrl = item.imageUrl?.startsWith('http')
                   ? item.imageUrl
-                  : `https://tre.dextron04.in${item.imageUrl}`
+                  : `https://tre.dextron04.in${item.imageUrl}`;
+                setSelectedImage(imageUrl);
               }}
-              style={styles.messageImage}
-              resizeMode="cover"
-              onError={() => console.log('Failed to load message image:', item.imageUrl)}
-            />
-          </TouchableOpacity>
-        )}
+              style={styles.imageMessageContainer}
+            >
+              <Image
+                source={{
+                  uri: item.imageUrl?.startsWith('http')
+                    ? item.imageUrl
+                    : `https://tre.dextron04.in${item.imageUrl}`
+                }}
+                style={styles.messageImage}
+                resizeMode="cover"
+                onError={() => console.log('Failed to load message image:', item.imageUrl)}
+              />
+            </TouchableOpacity>
+          )}
 
-        {item.type === 'FILE' && (
-          <Text style={[
-            styles.messageContent,
-            isMyMessage ? styles.myMessageText : styles.otherMessageText
-          ]}>
-            📎 {item.fileName || 'File'}
-          </Text>
-        )}
-
-        <View style={styles.messageFooter}>
-          <Text style={[
-            styles.messageTime,
-            isMyMessage ? styles.myMessageTime : styles.otherMessageTime
-          ]}>
+          {item.type === 'FILE' && (
+            <Text style={[
+              styles.messageContent,
+              isMyMessage ? styles.myMessageText : styles.otherMessageText
+            ]}>
+              📎 {item.fileName || 'File'}
+            </Text>
+          )}
+        </View>
+        
+        {/* Time and status outside the bubble */}
+        <View style={[
+          styles.messageTimeContainer,
+          isMyMessage ? styles.myMessageTimeContainer : styles.otherMessageTimeContainer
+        ]}>
+          <Text style={styles.messageTimeText}>
             {formatTime(item.createdAt)}
           </Text>
           {isMyMessage && (
@@ -1141,19 +1147,27 @@ const styles = StyleSheet.create({
     color: theme.colors.sidebarForeground,
     flex: 1,
   },
-  messageTime: {
-    fontSize: theme.typography.fontSizes.xs,
-    color: theme.colors.textMuted,
-  },
-  messageFooter: {
+  messageTimeContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.xs / 2,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  myMessageTimeContainer: {
+    justifyContent: 'flex-end',
+  },
+  otherMessageTimeContainer: {
+    justifyContent: 'flex-start',
+  },
+  messageTimeText: {
+    fontSize: theme.typography.fontSizes.xs - 1,
+    color: theme.colors.textMuted,
+    opacity: 0.7,
   },
   readStatus: {
-    fontSize: theme.typography.fontSizes.xs,
-    marginLeft: theme.spacing.sm,
+    fontSize: theme.typography.fontSizes.xs - 1,
+    marginLeft: theme.spacing.xs,
+    opacity: 0.7,
   },
   readStatusRead: {
     color: theme.colors.success,
@@ -1225,20 +1239,28 @@ const styles = StyleSheet.create({
   messagesContainer: {
     paddingVertical: theme.spacing.lg,
   },
-  messageContainer: {
+  messageWrapper: {
     marginVertical: theme.spacing.xs,
-    maxWidth: '80%',
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.sm,
+    maxWidth: '75%',
+  },
+  messageContainer: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.xl,
+  },
+  myMessageWrapper: {
+    alignSelf: 'flex-end',
+    marginLeft: theme.spacing['2xl'],
+  },
+  otherMessageWrapper: {
+    alignSelf: 'flex-start',
+    marginRight: theme.spacing['2xl'],
   },
   myMessage: {
-    alignSelf: 'flex-end',
-    backgroundColor: theme.colors.myMessage,
+    backgroundColor: theme.colors.primary,
   },
   otherMessage: {
-    alignSelf: 'flex-start',
-    backgroundColor: theme.colors.otherMessage,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
   },
@@ -1258,12 +1280,6 @@ const styles = StyleSheet.create({
   },
   otherMessageText: {
     color: theme.colors.foreground,
-  },
-  myMessageTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  otherMessageTime: {
-    color: theme.colors.textMuted,
   },
   typingIndicator: {
     paddingHorizontal: theme.spacing.lg,
@@ -1333,14 +1349,13 @@ const styles = StyleSheet.create({
   },
   // Image message styles
   imageMessageContainer: {
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.xl,
     overflow: 'hidden',
     marginBottom: theme.spacing.xs,
-    ...theme.shadows.sm,
   },
   messageImage: {
-    width: 200,
-    height: 150,
+    width: 180,
+    height: 135,
     borderRadius: theme.borderRadius.lg,
   },
   attachButton: {
