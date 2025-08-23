@@ -117,7 +117,7 @@ export const ChatScreen: React.FC = () => {
         }, 2000);
       }
     };
-    
+
     setTimeout(checkSocketStatus, 1000);
 
     return () => {
@@ -127,7 +127,7 @@ export const ChatScreen: React.FC = () => {
       socketService.off('user-typing');
       socketService.off('user-stopped-typing');
       socketService.off('user-status-changed');
-      
+
       // Clear typing debounce
       typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
       typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
@@ -272,7 +272,7 @@ export const ChatScreen: React.FC = () => {
         conversationId: message.conversationId,
         content: message.content?.substring(0, 50)
       });
-      
+
       const activeChat = selectedChatRef.current;
       const currentUserId = user?.id;
       const isForActive = activeChat && (
@@ -802,11 +802,11 @@ export const ChatScreen: React.FC = () => {
                     // Debounce typing indicator
                     typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
                     const isTyping = text.trim().length > 0;
-                    
+
                     if (isTyping) {
                       socketService.sendTyping(selectedConv.id, true);
                     }
-                    
+
                     typingDebounceRef.current = setTimeout(() => {
                       socketService.sendTyping(selectedConv.id, false);
                     }, 1000);

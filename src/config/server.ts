@@ -2,11 +2,7 @@
 export const SERVER_CONFIG = {
     // Production server
     BASE_URL: 'https://tre.dextron04.in',
-
-    // API endpoints
     API_BASE: 'https://tre.dextron04.in/api',
-
-    // WebSocket URL
     SOCKET_URL: 'https://tre.dextron04.in',
 
     // For development, you can uncomment these lines:

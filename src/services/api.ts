@@ -158,18 +158,31 @@ class ConnectXAPI {
    */
   async sendImageMessage(conversationId: string, receiverId: string, imageUri: string, fileName?: string): Promise<Message> {
     try {
+      console.log('Sending image message with params:', { conversationId, receiverId, imageUri: imageUri.substring(0, 50) + '...', fileName });
+      
       // Create FormData for image upload
       const formData = new FormData();
 
-      // For React Native, we need to append the file with specific format
-      formData.append('file', {
-        uri: imageUri,
-        type: 'image/jpeg', // Default to JPEG, could be improved to detect actual type
-        name: fileName || `image_${Date.now()}.jpg`,
-      } as any);
+      // Get the file extension from URI or use default
+      const fileExtension = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = fileExtension === 'png' ? 'image/png' : 
+                      fileExtension === 'gif' ? 'image/gif' :
+                      fileExtension === 'webp' ? 'image/webp' : 'image/jpeg';
 
+      // For React Native, we need to append the file with specific format
+      const fileObject = {
+        uri: imageUri,
+        type: mimeType,
+        name: fileName || `image_${Date.now()}.${fileExtension}`,
+      };
+
+      console.log('File object for upload:', fileObject);
+
+      formData.append('file', fileObject as any);
       formData.append('receiverId', receiverId);
       formData.append('conversationId', conversationId);
+
+      console.log('FormData prepared, making request to /messages/image');
 
       // Upload image to messages endpoint with multipart data
       const response = await this.api.post('/messages/image', formData, {
@@ -178,12 +191,20 @@ class ConnectXAPI {
         },
       });
 
+      console.log('Image upload response:', response.status, response.data);
+
       const msg = response.data.message || response.data;
       if (!msg.conversationId) msg.conversationId = conversationId;
       return msg;
 
     } catch (error: any) {
       console.error('Failed to send image message:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       throw error;
     }
   }

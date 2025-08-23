@@ -91,10 +91,10 @@ class SocketService {
 
   sendMessage(data: { conversationId: string; receiverId: string; content?: string; type?: 'TEXT' | 'IMAGE' | 'FILE'; imageUrl?: string; fileName?: string; fileSize?: number }) {
     if (this.socket?.connected) {
-      console.log('📤 Emitting socket message:', { 
-        conversationId: data.conversationId, 
+      console.log('📤 Emitting socket message:', {
+        conversationId: data.conversationId,
         type: data.type,
-        hasContent: !!data.content 
+        hasContent: !!data.content
       });
       this.socket.emit('send-message', {
         conversationId: data.conversationId,
