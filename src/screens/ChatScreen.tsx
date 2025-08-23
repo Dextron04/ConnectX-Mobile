@@ -35,6 +35,7 @@ export const ChatScreen: React.FC = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true); // Track if user is near bottom
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
 
@@ -149,6 +150,14 @@ export const ChatScreen: React.FC = () => {
     processedMessageIds.current = currentIds;
   }, [messages]);
 
+  // Load conversations and unread counts when conversations change
+  useEffect(() => {
+    if (conversations.length > 0 && user?.id) {
+      console.log('🔄 Conversations loaded, fetching unread counts...');
+      loadUnreadCounts();
+    }
+  }, [conversations, user?.id]);
+  
   // Load conversations on mount
   useEffect(() => {
     console.log('🚀 ChatScreen mounted, loading conversations...');
@@ -203,15 +212,34 @@ export const ChatScreen: React.FC = () => {
       // Unified join via service (avoid duplicate raw emit)
       console.log('🏠 Joining conversation via socket service:', selectedChat);
       socketService.joinConversation(selectedChat);
-      // Reset unread for this conversation
-      setUnreadCounts(u => ({ ...u, [selectedChat]: 0 }));
+      
+      // Reset unread for this conversation with a small delay to ensure state is updated
+      const markAsRead = async () => {
+        setTimeout(() => {
+          setUnreadCounts(prevCounts => {
+            const currentUnread = prevCounts[selectedChat] || 0;
+            if (currentUnread > 0) {
+              console.log(`🔄 Resetting unread count for ${selectedChat}: ${currentUnread} -> 0`);
+              setTotalUnreadCount(prevTotal => {
+                const newTotal = Math.max(0, prevTotal - currentUnread);
+                console.log('📉 Total unread count after reset:', prevTotal, '->', newTotal);
+                return newTotal;
+              });
+              return { ...prevCounts, [selectedChat]: 0 };
+            }
+            return prevCounts;
+          });
+        }, 100); // Small delay to ensure UI updates
+      };
+      
+      markAsRead();
 
       return () => {
         console.log('🚪 Leaving conversation:', selectedChat);
         socketService.leaveConversation(selectedChat);
       };
     }
-  }, [selectedChat]); // depend only on selectedChat to avoid duplicate joins
+  }, [selectedChat]); // depend only on selectedChat to avoid infinite loops
 
   // Smart auto-scroll - only scroll if user is near bottom
   useEffect(() => {
@@ -249,6 +277,42 @@ export const ChatScreen: React.FC = () => {
       Alert.alert('Error', 'Failed to load conversations');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadUnreadCounts = async () => {
+    if (conversations.length === 0 || !user?.id) return;
+    
+    try {
+      console.log('🔍 Loading unread counts for', conversations.length, 'conversations');
+      const counts: Record<string, number> = {};
+      let totalUnread = 0;
+      
+      for (const conv of conversations) {
+        try {
+          const messages = await connectXAPI.getMessages(conv.id);
+          const unreadMessages = messages.filter(m => 
+            m.receiverId === user.id && !m.isRead
+          );
+          
+          const unreadCount = unreadMessages.length;
+          if (unreadCount > 0) {
+            counts[conv.id] = unreadCount;
+            totalUnread += unreadCount;
+            console.log(`📊 Conversation ${conv.participant.username} (${conv.id}): ${unreadCount} unread`);
+          }
+        } catch (error) {
+          console.log('Could not get messages for conversation:', conv.id, error);
+        }
+      }
+      
+      console.log('✅ Final unread counts:', counts);
+      console.log('✅ Total unread:', totalUnread);
+      
+      setUnreadCounts(counts);
+      setTotalUnreadCount(totalUnread);
+    } catch (error) {
+      console.log('❌ Failed to load unread counts:', error);
     }
   };
 
@@ -386,14 +450,51 @@ export const ChatScreen: React.FC = () => {
           setTimeout(() => connectXAPI.markMessageAsRead(message.id).catch(() => { }), 800);
         }
       } else {
-        // Increment unread for that conversation
-        const targetConv = conversations.find(conv =>
-          (message.senderId === conv.participant.id && message.receiverId === currentUserId) ||
-          (message.receiverId === conv.participant.id && message.senderId === currentUserId)
-        );
-        if (targetConv) {
-          console.log('📨 Incrementing unread for conversation:', targetConv.id);
-          setUnreadCounts(u => ({ ...u, [targetConv.id]: (u[targetConv.id] || 0) + 1 }));
+        // Only increment unread if this is a message TO the current user (not from them)
+        if (message.receiverId === currentUserId && message.senderId !== currentUserId) {
+          console.log('🚨 NEW UNREAD MESSAGE - Incrementing count');
+          console.log('Message details:', {
+            id: message.id,
+            from: message.senderId,
+            to: message.receiverId,
+            currentUser: currentUserId,
+            conversationId: message.conversationId
+          });
+          
+          // Find the conversation for this message
+          const targetConv = conversations.find(conv =>
+            conv.id === message.conversationId
+          );
+          
+          if (targetConv) {
+            console.log('🎯 Found target conversation:', targetConv.participant.username, targetConv.id);
+            
+            setUnreadCounts(prevCounts => {
+              const currentCount = prevCounts[targetConv.id] || 0;
+              const newCount = currentCount + 1;
+              console.log(`🔥 UNREAD COUNT UPDATE: ${targetConv.participant.username} (${targetConv.id})`);
+              console.log(`   Previous count: ${currentCount}`);
+              console.log(`   New count: ${newCount}`);
+              console.log(`   All counts:`, {...prevCounts, [targetConv.id]: newCount});
+              return { ...prevCounts, [targetConv.id]: newCount };
+            });
+            
+            setTotalUnreadCount(prevTotal => {
+              const newTotal = prevTotal + 1;
+              console.log(`🔥 TOTAL UNREAD UPDATE: ${prevTotal} -> ${newTotal}`);
+              return newTotal;
+            });
+          } else {
+            console.log('❌ Could not find conversation for message:', message.conversationId);
+            console.log('Available conversations:', conversations.map(c => ({id: c.id, name: c.participant.username})));
+          }
+        } else {
+          console.log('ℹ️ Message not counted as unread:', {
+            reason: message.receiverId !== currentUserId ? 'Not for current user' : 'From current user',
+            receiverId: message.receiverId,
+            senderId: message.senderId,
+            currentUserId
+          });
         }
       }
       updateConversationLocally(message);
@@ -641,24 +742,51 @@ export const ChatScreen: React.FC = () => {
   // Show unread badge on conversation list
   const renderConversationItem = useCallback(({ item }: { item: Conversation }) => {
     const unread = unreadCounts[item.id] || 0;
+    const isUnread = unread > 0;
+    
     return (
       <TouchableOpacity
-        style={[styles.conversationItem, selectedChat === item.id && styles.selectedConversation]}
+        style={[
+          styles.conversationItem, 
+          selectedChat === item.id && styles.selectedConversation,
+          isUnread && styles.unreadConversation
+        ]}
         onPress={() => setSelectedChat(item.id)}
       >
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}><Text style={styles.avatarText}>{item.participant.username?.[0]?.toUpperCase() || '?'}</Text></View>
+          <View style={[styles.avatar, isUnread && styles.unreadAvatar]}>
+            <Text style={styles.avatarText}>
+              {item.participant.username?.[0]?.toUpperCase() || '?'}
+            </Text>
+          </View>
           {item.participant.isOnline && <View style={styles.onlineIndicator} />}
+          {isUnread && <View style={styles.unreadDot} />}
         </View>
         <View style={styles.conversationInfo}>
           <View style={styles.conversationHeader}>
-            <Text style={styles.username} numberOfLines={1}>{item.participant.username}</Text>
-            {item.lastMessage && (<Text style={styles.messageTime}>{formatLastMessageTime(item.lastMessage.createdAt)}</Text>)}
+            <Text style={[styles.username, isUnread && styles.unreadUsername]} numberOfLines={1}>
+              {item.participant.username}
+            </Text>
+            {item.lastMessage && (
+              <Text style={[styles.messageTime, isUnread && styles.unreadMessageTime]}>
+                {formatLastMessageTime(item.lastMessage.createdAt)}
+              </Text>
+            )}
           </View>
-          {item.lastMessage && (<Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage.type === 'IMAGE' ? '📷 Image' : item.lastMessage.type === 'FILE' ? '📎 File' : item.lastMessage.content || 'Message'}</Text>)}
+          {item.lastMessage && (
+            <Text style={[styles.lastMessage, isUnread && styles.unreadLastMessage]} numberOfLines={1}>
+              {item.lastMessage.type === 'IMAGE' ? '📷 Image' : 
+               item.lastMessage.type === 'FILE' ? '📎 File' : 
+               item.lastMessage.content || 'Message'}
+            </Text>
+          )}
         </View>
-        {unread > 0 && (
-          <View style={styles.unreadBadge}><Text style={styles.unreadText}>{unread > 99 ? '99+' : unread}</Text></View>
+        {isUnread && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>
+              {unread > 99 ? '99+' : unread.toString()}
+            </Text>
+          </View>
         )}
       </TouchableOpacity>
     );
@@ -759,7 +887,16 @@ export const ChatScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>ConnectX</Text>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>ConnectX</Text>
+            {totalUnreadCount > 0 && (
+              <View style={styles.totalUnreadBadge}>
+                <Text style={styles.totalUnreadText}>
+                  {totalUnreadCount > 99 ? '99+' : totalUnreadCount.toString()}
+                </Text>
+              </View>
+            )}
+          </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity
               style={styles.libraryButton}
@@ -1017,10 +1154,30 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.border,
     ...theme.shadows.sm,
   },
+  headerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
   headerTitle: {
     fontSize: theme.typography.fontSizes.xl,
     fontWeight: theme.typography.fontWeights.bold,
     color: theme.colors.foreground,
+  },
+  totalUnreadBadge: {
+    backgroundColor: theme.colors.success,
+    minWidth: 20,
+    height: 20,
+    borderRadius: theme.borderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xs,
+    ...theme.shadows.sm,
+  },
+  totalUnreadText: {
+    color: theme.colors.foreground,
+    fontSize: theme.typography.fontSizes.xs,
+    fontWeight: theme.typography.fontWeights.bold,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -1102,6 +1259,37 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary + '20',
     borderLeftWidth: 3,
     borderLeftColor: theme.colors.primary,
+  },
+  unreadConversation: {
+    backgroundColor: theme.colors.surface + '40',
+  },
+  unreadAvatar: {
+    backgroundColor: theme.colors.primary,
+    borderWidth: 2,
+    borderColor: theme.colors.success,
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: theme.colors.success,
+    borderWidth: 2,
+    borderColor: theme.colors.background,
+  },
+  unreadUsername: {
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.foreground,
+  },
+  unreadMessageTime: {
+    color: theme.colors.success,
+    fontWeight: theme.typography.fontWeights.semibold,
+  },
+  unreadLastMessage: {
+    color: theme.colors.foreground,
+    fontWeight: theme.typography.fontWeights.medium,
   },
   avatarContainer: {
     position: 'relative',
