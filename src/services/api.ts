@@ -65,7 +65,7 @@ class ConnectXAPI {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      
+
       // Log request details for debugging
       console.log('API Request:', {
         url: config.url,
@@ -74,7 +74,7 @@ class ConnectXAPI {
         headers: config.headers,
         timeout: config.timeout
       });
-      
+
       return config;
     });
 
@@ -98,7 +98,7 @@ class ConnectXAPI {
           timeout: error.config?.timeout,
           networkError: !error.response
         });
-        
+
         if (error.response?.status === 401) {
           await AsyncStorage.removeItem('auth_token');
           await AsyncStorage.removeItem('user');
@@ -187,7 +187,7 @@ class ConnectXAPI {
   async sendImageMessage(conversationId: string, receiverId: string, imageUri: string, fileName?: string): Promise<Message> {
     try {
       console.log('Sending image message with params:', { conversationId, receiverId, imageUri: imageUri.substring(0, 50) + '...', fileName });
-      
+
       // Test basic connectivity first
       try {
         console.log('Testing server connectivity...');
@@ -206,7 +206,7 @@ class ConnectXAPI {
         });
         throw new Error(`Server connectivity failed: ${connectError.message}`);
       }
-      
+
       // Get auth token
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
@@ -218,9 +218,9 @@ class ConnectXAPI {
 
       // Get the file extension from URI or use default
       const fileExtension = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const mimeType = fileExtension === 'png' ? 'image/png' : 
-                      fileExtension === 'gif' ? 'image/gif' :
-                      fileExtension === 'webp' ? 'image/webp' : 'image/jpeg';
+      const mimeType = fileExtension === 'png' ? 'image/png' :
+        fileExtension === 'gif' ? 'image/gif' :
+          fileExtension === 'webp' ? 'image/webp' : 'image/jpeg';
 
       // For React Native, we need to append the file with specific format
       const fileObject = {

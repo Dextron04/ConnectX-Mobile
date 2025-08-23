@@ -20,6 +20,7 @@ export const API_TIMEOUT = 10000;
 
 // Socket configuration
 export const SOCKET_CONFIG = {
+    path: '/api/socket/io',
     transports: ['websocket'] as string[],
     upgrade: true,
     forceNew: true,
