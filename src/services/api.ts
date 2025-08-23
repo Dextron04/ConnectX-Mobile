@@ -238,10 +238,28 @@ class ConnectXAPI {
 
   async getSharedImages(): Promise<any[]> {
     try {
+      console.log('📡 Fetching shared images from server...');
       const response = await this.api.get('/shared-images');
-      return response.data.sharedImages || [];
+      console.log('📡 Shared images response:', response.data);
+      
+      const images = response.data.sharedImages || [];
+      
+      // Ensure all image URLs are absolute
+      const processedImages = images.map((img: any) => ({
+        ...img,
+        url: img.url && !img.url.startsWith('http') ? `${this.baseURL}${img.url}` : img.url
+      }));
+      
+      console.log('📡 Processed images count:', processedImages.length);
+      if (processedImages.length > 0) {
+        console.log('📡 Sample processed image URL:', processedImages[0].url);
+      }
+      
+      return processedImages;
     } catch (error: any) {
-      console.error('Failed to fetch shared images:', error);
+      console.error('❌ Failed to fetch shared images:', error);
+      console.error('❌ Response status:', error.response?.status);
+      console.error('❌ Response data:', error.response?.data);
       return [];
     }
   }

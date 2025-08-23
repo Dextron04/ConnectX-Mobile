@@ -51,7 +51,20 @@ export const DigitalLibraryScreen: React.FC = () => {
   const loadImages = async () => {
     try {
       setLoading(true);
+      console.log('🖼️ Loading shared images...');
       const allImages = await connectXAPI.getSharedImages();
+      console.log('🖼️ Raw images response:', allImages);
+      console.log('🖼️ Number of images:', allImages.length);
+      
+      if (allImages.length > 0) {
+        console.log('🖼️ First image sample:', {
+          id: allImages[0].id,
+          url: allImages[0].url,
+          originalName: allImages[0].originalName,
+          sender: allImages[0].sender?.username,
+          receiver: allImages[0].receiver?.username
+        });
+      }
       
       let filteredImages = allImages;
       if (activeTab === 'sent') {
@@ -60,9 +73,11 @@ export const DigitalLibraryScreen: React.FC = () => {
         filteredImages = allImages.filter(img => img.receiver.id === user?.id);
       }
       
+      console.log('🖼️ Filtered images count:', filteredImages.length);
       setImages(filteredImages);
-    } catch (error) {
-      console.error('Failed to load images:', error);
+    } catch (error: any) {
+      console.error('❌ Failed to load images:', error);
+      console.error('❌ Error details:', error.response?.data);
       Alert.alert('Error', 'Failed to load images');
     } finally {
       setLoading(false);
@@ -104,13 +119,26 @@ export const DigitalLibraryScreen: React.FC = () => {
   const renderImageItem = ({ item }: { item: SharedImage }) => {
     const statusBadge = getStatusBadge(item);
     const isMyImage = item.sender.id === user?.id;
+    
+    // Ensure absolute URL for image
+    const imageUrl = item.url.startsWith('http') ? item.url : `https://tre.dextron04.in${item.url}`;
+    console.log('🖼️ Rendering image:', item.originalName, 'URL:', imageUrl);
 
     return (
       <TouchableOpacity 
         style={styles.imageItem}
         onPress={() => handleImagePress(item)}
       >
-        <Image source={{ uri: item.url }} style={styles.imageThumb} />
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.imageThumb}
+          onError={(error) => {
+            console.error('❌ Image load error for', item.originalName, ':', error.nativeEvent.error);
+          }}
+          onLoad={() => {
+            console.log('✅ Image loaded successfully:', item.originalName);
+          }}
+        />
         <View style={styles.imageInfo}>
           <Text style={styles.imageName} numberOfLines={1}>
             {item.originalName}
@@ -210,9 +238,15 @@ export const DigitalLibraryScreen: React.FC = () => {
             {selectedImage && (
               <>
                 <Image 
-                  source={{ uri: selectedImage.url }} 
+                  source={{ uri: selectedImage.url.startsWith('http') ? selectedImage.url : `https://tre.dextron04.in${selectedImage.url}` }} 
                   style={styles.modalImage}
                   resizeMode="contain"
+                  onError={(error) => {
+                    console.error('❌ Modal image load error:', error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('✅ Modal image loaded successfully');
+                  }}
                 />
                 
                 <View style={styles.modalInfo}>
