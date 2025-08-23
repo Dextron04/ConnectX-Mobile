@@ -79,17 +79,16 @@ export const ChatScreen: React.FC = () => {
 
       loadMessages(selectedChat);
 
-      // Join conversation room
-      console.log('🏠 Joining conversation room:', selectedChat);
-      socketService.emit('join-conversation', selectedChat);
+      // Unified join via service (avoid duplicate raw emit)
+      socketService.joinConversation(selectedChat);
+      // Reset unread for this conversation
+      setUnreadCounts(u => ({ ...u, [selectedChat]: 0 }));
 
       return () => {
-        console.log('🚪 Leaving conversation room:', selectedChat);
-        // Leave conversation room
-        socketService.emit('leave-conversation', selectedChat);
+        socketService.leaveConversation(selectedChat);
       };
     }
-  }, [selectedChat, conversations]); // Added conversations dependency
+  }, [selectedChat]); // depend only on selectedChat to avoid duplicate joins
 
   // Smart auto-scroll - only scroll if user is near bottom
   useEffect(() => {
@@ -250,19 +249,13 @@ export const ChatScreen: React.FC = () => {
     if (!newMessage.trim() || !selectedChat || isSending) {
       return;
     }
-
     const selectedConv = conversations.find(c => c.id === selectedChat);
     if (!selectedConv) return;
-
     setIsSending(true);
     const messageContent = newMessage.trim();
     setNewMessage('');
-
     try {
-      // Stop typing indicator
       socketService.sendTyping(selectedConv.id, false);
-
-      // Create temporary optimistic message placeholder
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const optimisticMessage: Message = {
         id: tempId,
@@ -275,10 +268,7 @@ export const ChatScreen: React.FC = () => {
         sender: user!,
         isRead: false,
       } as Message;
-
       setMessages(prev => [...prev, optimisticMessage]);
-
-      // Optimistic emit via socket for real-time delivery
       if (socketService.isConnected()) {
         socketService.sendMessage({
           conversationId: selectedConv.id,
@@ -287,36 +277,19 @@ export const ChatScreen: React.FC = () => {
           type: 'TEXT'
         });
       }
-
       const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
-
-      // Replace optimistic message if still present
-      setMessages(prev => prev.map(m => m.id === tempId ? message : m));
-
-      // Add message only if not already added by socket event
-      setMessages(prev => {
-        if (prev.find(m => m.id === message.id)) {
-          console.log('♻️ Message already present (socket delivered first), skipping duplicate add');
-          return prev;
-        }
-        const newMessages = [...prev, message];
-        console.log('📤 Message sent (REST), added to list. Total messages:', newMessages.length);
-        return newMessages;
-      });
-
-      // Update conversation list locally instead of reloading
+      // Replace optimistic; do NOT append again if socket already delivered
+      setMessages(prev => prev.some(m => m.id === message.id)
+        ? prev.map(m => m.id === tempId ? message : m)
+        : prev.map(m => m.id === tempId ? message : m));
       updateConversationLocally(message);
-
-      // Immediately scroll to bottom after sending
-      setTimeout(() => {
-        messagesEndRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-
-      console.log('📤 Message sent and conversation updated locally');
+      setTimeout(() => messagesEndRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (error: any) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message');
-      setNewMessage(messageContent); // Restore message on error
+      setNewMessage(messageContent);
+      // Remove optimistic temp
+      setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
     } finally {
       setIsSending(false);
     }
