@@ -13,6 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { connectXAPI } from '../services/api';
 import { notificationService } from '../services/notifications';
+import { localNotificationSettings } from '../services/localNotificationSettings';
 
 interface NotificationSettings {
   pushEnabled: boolean;
@@ -44,11 +45,18 @@ export const NotificationSettingsScreen: React.FC = () => {
 
   const loadSettings = async () => {
     try {
+      // Try to load from server first
       const serverSettings = await connectXAPI.getNotificationSettings();
       setSettings(serverSettings);
-    } catch (error) {
-      console.error('Failed to load notification settings:', error);
-      Alert.alert('Error', 'Failed to load notification settings');
+      // Save to local storage for backup
+      await localNotificationSettings.updateSettings(serverSettings);
+      console.log('✅ Loaded notification settings from server');
+    } catch (error: any) {
+      console.warn(`⚠️ Server doesn't support notification settings (${error.response?.status}):`, error.message);
+      // Fallback to local settings
+      const localSettings = await localNotificationSettings.getSettings();
+      setSettings(localSettings);
+      console.log('📱 Using local notification settings');
     } finally {
       setIsLoading(false);
     }
@@ -61,7 +69,7 @@ export const NotificationSettingsScreen: React.FC = () => {
 
   const updateSetting = async (key: keyof NotificationSettings, value: boolean) => {
     setIsSaving(true);
-    
+
     try {
       // If enabling push notifications but permissions not granted, request them
       if (key === 'pushEnabled' && value && !permissionStatus.granted) {
@@ -80,8 +88,17 @@ export const NotificationSettingsScreen: React.FC = () => {
       const newSettings = { ...settings, [key]: value };
       setSettings(newSettings);
 
-      // Update server settings
-      await connectXAPI.updateNotificationSettings({ [key]: value });
+      // Save to local storage
+      await localNotificationSettings.updateSettings({ [key]: value });
+
+      // Try to update server settings, but don't fail if server doesn't support it
+      try {
+        await connectXAPI.updateNotificationSettings({ [key]: value });
+        console.log(`✅ Server updated ${key} to ${value}`);
+      } catch (serverError: any) {
+        console.warn(`⚠️ Server doesn't support notification settings update (${serverError.response?.status}):`, serverError.message);
+        // Continue with local settings update even if server update fails
+      }
 
       // If disabling push notifications, unsubscribe from server
       if (key === 'pushEnabled' && !value) {
@@ -95,7 +112,7 @@ export const NotificationSettingsScreen: React.FC = () => {
     } catch (error) {
       console.error(`Failed to update ${key}:`, error);
       Alert.alert('Error', `Failed to update notification settings`);
-      
+
       // Revert the setting on error
       setSettings(prev => ({ ...prev, [key]: !value }));
     } finally {
@@ -132,8 +149,8 @@ export const NotificationSettingsScreen: React.FC = () => {
       'Would you like to open system settings to enable notifications?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Open Settings', 
+        {
+          text: 'Open Settings',
           onPress: () => {
             // On iOS, this would typically open the settings app
             // For now, we'll just show instructions
@@ -161,7 +178,7 @@ export const NotificationSettingsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
@@ -173,11 +190,11 @@ export const NotificationSettingsScreen: React.FC = () => {
       <ScrollView style={styles.content}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Push Notifications</Text>
-          
+
           <View style={styles.permissionStatus}>
             <Text style={styles.permissionLabel}>Permission Status:</Text>
             <Text style={[
-              styles.permissionValue, 
+              styles.permissionValue,
               permissionStatus.granted ? styles.permissionGranted : styles.permissionDenied
             ]}>
               {permissionStatus.granted ? 'Granted ✓' : 'Not Granted ✗'}
@@ -209,7 +226,7 @@ export const NotificationSettingsScreen: React.FC = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notification Types</Text>
-          
+
           <View style={styles.settingItem}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Message Notifications</Text>
@@ -261,8 +278,8 @@ export const NotificationSettingsScreen: React.FC = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Test Notifications</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[
               styles.testButton,
               (!permissionStatus.granted || !settings.pushEnabled) && styles.disabledButton
@@ -277,7 +294,7 @@ export const NotificationSettingsScreen: React.FC = () => {
               Send Test Notification
             </Text>
           </TouchableOpacity>
-          
+
           <Text style={styles.testDescription}>
             Send a test notification to verify your settings are working
           </Text>

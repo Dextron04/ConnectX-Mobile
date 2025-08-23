@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "ios-offline": "expo start --ios --offline",
+    "web": "expo start --web",
+    "clear": "expo start --clear"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.1.2",
@@ -14,16 +16,16 @@
     "@react-navigation/stack": "^7.4.7",
     "axios": "^1.11.0",
     "expo": "~53.0.22",
+    "expo-constants": "~17.1.7",
+    "expo-device": "~7.1.4",
+    "expo-notifications": "~0.31.4",
     "expo-status-bar": "~2.2.3",
     "expo-web-browser": "~14.2.0",
     "react": "19.0.0",
-    "react-native": "0.79.6",
+    "react-native": "0.79.5",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
-    "socket.io-client": "^4.8.1",
-    "expo-notifications": "~0.31.4",
-    "expo-device": "~7.1.4",
-    "expo-constants": "~17.1.7"
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

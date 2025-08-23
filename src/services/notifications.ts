@@ -11,6 +11,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -75,10 +77,29 @@ class NotificationService {
       }
 
       // Get the push token
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-      const tokenData = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : {}
-      );
+      // For development, we can get a token without a specific project ID
+      // In production, you'll need a proper Expo project ID
+      let tokenData;
+
+      try {
+        // First try with project ID if available
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId ||
+          Constants.manifest?.extra?.eas?.projectId ||
+          Constants.manifest2?.extra?.eas?.projectId;
+
+        if (projectId && projectId !== 'your-project-id-here') {
+          console.log('Using project ID:', projectId);
+          tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        } else {
+          // Fallback: get token without project ID (works in development)
+          console.log('Getting push token without project ID (development mode)');
+          tokenData = await Notifications.getExpoPushTokenAsync();
+        }
+      } catch (error) {
+        // If project ID fails, try without it
+        console.warn('Failed to get token with project ID, trying without:', error);
+        tokenData = await Notifications.getExpoPushTokenAsync();
+      }
 
       this.token = tokenData.data;
       await AsyncStorage.setItem('expo_push_token', this.token);
@@ -125,10 +146,10 @@ class NotificationService {
 
   private handleNotificationReceived(notification: Notifications.Notification) {
     const data = notification.request.content.data as PushNotificationData;
-    
+
     // You can add custom logic here for handling received notifications
     // For example, update unread counts, refresh conversations, etc.
-    
+
     if (data?.conversationId) {
       // Could emit an event to update the conversation list
       console.log('Message notification for conversation:', data.conversationId);
@@ -137,7 +158,7 @@ class NotificationService {
 
   private handleNotificationResponse(response: Notifications.NotificationResponse) {
     const data = response.notification.request.content.data as PushNotificationData;
-    
+
     // Handle navigation based on notification data
     if (data?.conversationId) {
       // Could navigate to specific conversation
@@ -166,7 +187,7 @@ class NotificationService {
 
       const response = await connectXAPI.subscribeToNotifications(subscription);
       console.log('Subscribed to server notifications:', response);
-      
+
       await AsyncStorage.setItem('notification_subscribed', 'true');
       return true;
     } catch (error) {
@@ -183,13 +204,13 @@ class NotificationService {
 
       const endpoint = `https://exp.host/--/api/v2/push/send`;
       await connectXAPI.unsubscribeFromNotifications(endpoint);
-      
+
       await AsyncStorage.removeItem('notification_subscribed');
       await AsyncStorage.removeItem('expo_push_token');
-      
+
       this.token = null;
       this.isRegistered = false;
-      
+
       console.log('Unsubscribed from server notifications');
       return true;
     } catch (error) {

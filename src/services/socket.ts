@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Message } from './api';
+import { SERVER_CONFIG, SOCKET_CONFIG } from '../config/server';
 
 export interface SocketEvents {
   'new-message': (message: Message) => void;
@@ -12,7 +13,7 @@ export interface SocketEvents {
 
 class SocketService {
   private socket: Socket | null = null;
-  private baseURL: string = 'http://localhost:3456';
+  private baseURL: string = SERVER_CONFIG.SOCKET_URL;
 
   async connect(baseURL?: string) {
     if (this.socket?.connected) {
@@ -27,9 +28,7 @@ class SocketService {
     const token = await AsyncStorage.getItem('auth_token');
 
     this.socket = io(this.baseURL, {
-      transports: ['websocket'],
-      upgrade: true,
-      forceNew: true,
+      ...SOCKET_CONFIG,
       auth: {
         token: token
       }
@@ -56,14 +55,14 @@ class SocketService {
 
 
   on<K extends keyof SocketEvents>(event: K, callback: SocketEvents[K]) {
-    this.socket?.on(event, callback);
+    this.socket?.on(event as string, callback as (...args: any[]) => void);
   }
 
   off<K extends keyof SocketEvents>(event: K, callback?: SocketEvents[K]) {
     if (callback) {
-      this.socket?.off(event, callback);
+      this.socket?.off(event as string, callback as (...args: any[]) => void);
     } else {
-      this.socket?.off(event);
+      this.socket?.off(event as string);
     }
   }
 

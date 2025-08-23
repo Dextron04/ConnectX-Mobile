@@ -18,8 +18,11 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {
+            "tre.dextron04.in": {
+              "NSExceptionMinimumTLSVersion": "1.2",
+              "NSIncludesSubdomains": true
+            },
             "localhost": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSExceptionMinimumTLSVersion": "1.0",
@@ -27,8 +30,13 @@
             }
           }
         },
-        "UIBackgroundModes": ["fetch", "remote-notification"],
-        "UIRequiredDeviceCapabilities": ["armv7"],
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ],
+        "UIRequiredDeviceCapabilities": [
+          "armv7"
+        ],
         "UISupportedInterfaceOrientations": [
           "UIInterfaceOrientationPortrait"
         ],
@@ -67,7 +75,9 @@
           "icon": "./assets/icon.png",
           "color": "#3b82f6",
           "defaultChannel": "default",
-          "sounds": ["./assets/notification.wav"]
+          "sounds": [
+            "./assets/notification.wav"
+          ]
         }
       ]
     ],
@@ -76,6 +86,12 @@
     },
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c93a5632-2f9e-4fac-ae34-455643d3d27d"
+      }
+    },
+    "owner": "dextron04"
   }
 }

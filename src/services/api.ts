@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SERVER_CONFIG, API_TIMEOUT } from '../config/server';
 
 export interface User {
   id: string;
@@ -44,11 +45,11 @@ class ConnectXAPI {
   private api: AxiosInstance;
   private baseURL: string;
 
-  constructor(baseURL: string = 'http://localhost:3456') {
+  constructor(baseURL: string = SERVER_CONFIG.BASE_URL) {
     this.baseURL = baseURL;
     this.api = axios.create({
       baseURL: `${baseURL}/api`,
-      timeout: 10000,
+      timeout: API_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -85,7 +86,7 @@ class ConnectXAPI {
     });
 
     const { user, token } = response.data;
-    
+
     await AsyncStorage.setItem('auth_token', token);
     await AsyncStorage.setItem('user', JSON.stringify(user));
 
@@ -100,7 +101,7 @@ class ConnectXAPI {
     });
 
     const { user, token } = response.data;
-    
+
     await AsyncStorage.setItem('auth_token', token);
     await AsyncStorage.setItem('user', JSON.stringify(user));
 
@@ -180,8 +181,22 @@ class ConnectXAPI {
     emailNotifications: boolean;
     soundEnabled: boolean;
   }> {
-    const response = await this.api.get('/notifications/settings');
-    return response.data;
+    try {
+      const response = await this.api.get('/notifications/settings');
+      return response.data;
+    } catch (error: any) {
+      // If server doesn't support this endpoint, return default settings
+      if (error.response?.status === 404 || error.response?.status === 405) {
+        console.warn('Server doesn\'t support notification settings, using defaults');
+        return {
+          pushEnabled: true,
+          messageNotifications: true,
+          emailNotifications: true,
+          soundEnabled: true,
+        };
+      }
+      throw error;
+    }
   }
 
   async updateNotificationSettings(settings: {
@@ -190,8 +205,17 @@ class ConnectXAPI {
     emailNotifications?: boolean;
     soundEnabled?: boolean;
   }): Promise<{ success: boolean }> {
-    const response = await this.api.post('/notifications/settings', settings);
-    return response.data;
+    try {
+      const response = await this.api.post('/notifications/settings', settings);
+      return response.data;
+    } catch (error: any) {
+      // If server doesn't support this endpoint, just return success for local handling
+      if (error.response?.status === 404 || error.response?.status === 405) {
+        console.warn('Server doesn\'t support notification settings update, handling locally');
+        return { success: true };
+      }
+      throw error;
+    }
   }
 
   setBaseURL(url: string) {
