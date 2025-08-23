@@ -53,7 +53,7 @@ export const ChatScreen: React.FC = () => {
   const deduplicateMessages = useCallback((messages: Message[]) => {
     const seen = new Set<string>();
     const duplicates: string[] = [];
-    
+
     // First pass - identify duplicates
     messages.forEach(message => {
       if (seen.has(message.id)) {
@@ -61,12 +61,12 @@ export const ChatScreen: React.FC = () => {
       }
       seen.add(message.id);
     });
-    
+
     // Log duplicates if found
     if (duplicates.length > 0) {
       console.log(`🗑️ Found ${duplicates.length} duplicate messages:`, duplicates);
     }
-    
+
     // Second pass - filter
     seen.clear();
     return messages.filter(message => {
@@ -125,14 +125,14 @@ export const ChatScreen: React.FC = () => {
 
   // Track processed message IDs to prevent duplicates
   const processedMessageIds = useRef(new Set<string>());
-  
+
   // Generate stable keys for messages to prevent duplicate key issues in React rendering
   const getStableMessageKey = useCallback((message: Message) => {
     // For real messages, use the ID directly
     if (!message.id.startsWith('temp-')) {
       return `msg-${message.id}`;
     }
-    
+
     // For temp messages, create a composite key with content and timestamp
     // to ensure uniqueness even if multiple temp messages are created
     const contentHash = message.content?.substring(0, 20) || '';
@@ -141,7 +141,7 @@ export const ChatScreen: React.FC = () => {
 
   useEffect(() => { isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
-  useEffect(() => { 
+  useEffect(() => {
     messagesRef.current = messages;
     // Clear processed message tracking when messages change significantly
     const currentIds = new Set(messages.map(m => m.id).filter(id => !id.startsWith('temp-')));
@@ -355,24 +355,24 @@ export const ChatScreen: React.FC = () => {
         setMessages(prev => {
           // Use our deduplication function
           const deduped = deduplicateMessages(prev);
-          
+
           // Check for duplicates more thoroughly
           const existingMessage = deduped.find(m => m.id === message.id);
           if (existingMessage) {
             console.log('♻️ Duplicate message detected via socket, skipping:', message.id);
             return deduped;
           }
-          
+
           // Also check if this is replacing a temp message
-          const tempMessage = deduped.find(m => m.id.startsWith('temp-') && 
-            m.senderId === message.senderId && 
+          const tempMessage = deduped.find(m => m.id.startsWith('temp-') &&
+            m.senderId === message.senderId &&
             m.content === message.content);
-          
+
           if (tempMessage) {
             console.log('🔄 Replacing temp message with real message:', tempMessage.id, '→', message.id);
             return deduped.map(m => m.id === tempMessage.id ? message : m);
           }
-          
+
           const updated = [...deduped, message];
           console.log('📨 Added new message to active chat via socket, total:', updated.length);
           return updated;
@@ -457,24 +457,24 @@ export const ChatScreen: React.FC = () => {
 
       // Send message via HTTP API (this will also emit via socket on server side)
       const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
-      
+
       // Track this message to prevent duplicate processing
       processedMessageIds.current.add(message.id);
-      
+
       // Replace optimistic message and ensure no duplicates
       setMessages(prev => {
         // Use deduplication function first
         const deduped = deduplicateMessages(prev);
-        
+
         // Filter out the temp message
         const withoutTemp = deduped.filter(m => m.id !== tempId);
-        
+
         // Check if real message already exists (from socket)
         if (withoutTemp.find(m => m.id === message.id)) {
           console.log('♻️ Real message already exists from socket, just removing temp');
           return withoutTemp;
         }
-        
+
         // Add the real message
         console.log('📨 Adding real message from HTTP API response');
         return [...withoutTemp, message];
