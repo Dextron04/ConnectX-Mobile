@@ -65,12 +65,40 @@ class ConnectXAPI {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      
+      // Log request details for debugging
+      console.log('API Request:', {
+        url: config.url,
+        method: config.method,
+        baseURL: config.baseURL,
+        headers: config.headers,
+        timeout: config.timeout
+      });
+      
       return config;
     });
 
     this.api.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        console.log('API Response Success:', {
+          status: response.status,
+          url: response.config.url,
+          data: response.data ? 'Data received' : 'No data'
+        });
+        return response;
+      },
       async (error) => {
+        console.error('API Response Error:', {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+          timeout: error.config?.timeout,
+          networkError: !error.response
+        });
+        
         if (error.response?.status === 401) {
           await AsyncStorage.removeItem('auth_token');
           await AsyncStorage.removeItem('user');
@@ -160,6 +188,31 @@ class ConnectXAPI {
     try {
       console.log('Sending image message with params:', { conversationId, receiverId, imageUri: imageUri.substring(0, 50) + '...', fileName });
       
+      // Test basic connectivity first
+      try {
+        console.log('Testing server connectivity...');
+        const connectivityTest = await axios.get(`${this.baseURL}/api/conversations`, {
+          timeout: 5000,
+          headers: {
+            'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+          },
+        });
+        console.log('Connectivity test successful:', connectivityTest.status);
+      } catch (connectError: any) {
+        console.error('Connectivity test failed:', {
+          message: connectError.message,
+          code: connectError.code,
+          status: connectError.response?.status
+        });
+        throw new Error(`Server connectivity failed: ${connectError.message}`);
+      }
+      
+      // Get auth token
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       // Create FormData for image upload
       const formData = new FormData();
 
@@ -184,12 +237,18 @@ class ConnectXAPI {
 
       console.log('FormData prepared, making request to /messages/image');
 
-      // Upload image to messages endpoint with multipart data
-      const response = await this.api.post('/messages/image', formData, {
+      // Create a separate axios instance for file upload with longer timeout
+      const uploadClient = axios.create({
+        baseURL: `${this.baseURL}/api`,
+        timeout: 30000, // 30 seconds for file upload
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
       });
+
+      // Upload image to messages endpoint with multipart data
+      const response = await uploadClient.post('/messages/image', formData);
 
       console.log('Image upload response:', response.status, response.data);
 
@@ -203,7 +262,9 @@ class ConnectXAPI {
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
-        message: error.message
+        message: error.message,
+        code: error.code,
+        isNetworkError: !error.response
       });
       throw error;
     }
