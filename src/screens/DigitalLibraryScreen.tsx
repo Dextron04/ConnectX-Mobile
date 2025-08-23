@@ -55,7 +55,7 @@ export const DigitalLibraryScreen: React.FC = () => {
       const allImages = await connectXAPI.getSharedImages();
       console.log('🖼️ Raw images response:', allImages);
       console.log('🖼️ Number of images:', allImages.length);
-      
+
       if (allImages.length > 0) {
         console.log('🖼️ First image sample:', {
           id: allImages[0].id,
@@ -65,14 +65,14 @@ export const DigitalLibraryScreen: React.FC = () => {
           receiver: allImages[0].receiver?.username
         });
       }
-      
+
       let filteredImages = allImages;
       if (activeTab === 'sent') {
         filteredImages = allImages.filter(img => img.sender.id === user?.id);
       } else if (activeTab === 'received') {
         filteredImages = allImages.filter(img => img.receiver.id === user?.id);
       }
-      
+
       console.log('🖼️ Filtered images count:', filteredImages.length);
       setImages(filteredImages);
     } catch (error: any) {
@@ -119,18 +119,18 @@ export const DigitalLibraryScreen: React.FC = () => {
   const renderImageItem = ({ item }: { item: SharedImage }) => {
     const statusBadge = getStatusBadge(item);
     const isMyImage = item.sender.id === user?.id;
-    
+
     // Ensure absolute URL for image
     const imageUrl = item.url.startsWith('http') ? item.url : `https://tre.dextron04.in${item.url}`;
     console.log('🖼️ Rendering image:', item.originalName, 'URL:', imageUrl);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.imageItem}
         onPress={() => handleImagePress(item)}
       >
-        <Image 
-          source={{ uri: imageUrl }} 
+        <Image
+          source={{ uri: imageUrl }}
           style={styles.imageThumb}
           onError={(error) => {
             console.error('❌ Image load error for', item.originalName, ':', error.nativeEvent.error);
@@ -171,7 +171,7 @@ export const DigitalLibraryScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
@@ -227,18 +227,18 @@ export const DigitalLibraryScreen: React.FC = () => {
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {selectedImage?.originalName}
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setSelectedImage(null)}
               >
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedImage && (
               <>
-                <Image 
-                  source={{ uri: selectedImage.url.startsWith('http') ? selectedImage.url : `https://tre.dextron04.in${selectedImage.url}` }} 
+                <Image
+                  source={{ uri: selectedImage.url.startsWith('http') ? selectedImage.url : `https://tre.dextron04.in${selectedImage.url}` }}
                   style={styles.modalImage}
                   resizeMode="contain"
                   onError={(error) => {
@@ -248,11 +248,11 @@ export const DigitalLibraryScreen: React.FC = () => {
                     console.log('✅ Modal image loaded successfully');
                   }}
                 />
-                
+
                 <View style={styles.modalInfo}>
                   <View style={styles.modalUserInfo}>
                     <Text style={styles.modalUserText}>
-                      {selectedImage.sender.id === user?.id 
+                      {selectedImage.sender.id === user?.id
                         ? `Shared with ${selectedImage.receiver.username}`
                         : `Shared by ${selectedImage.sender.username}`
                       }
@@ -261,7 +261,7 @@ export const DigitalLibraryScreen: React.FC = () => {
                       {new Date(selectedImage.createdAt).toLocaleString()}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.modalActions}>
                     <TouchableOpacity style={styles.downloadButton}>
                       <Text style={styles.downloadButtonText}>Download</Text>
