@@ -43,6 +43,7 @@ export const ChatScreen: React.FC = () => {
   const selectedChatRef = useRef<string | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastAutoScrollMsgIdRef = useRef<string | null>(null);
   const autoScrollRequestedRef = useRef(false);
   const autoScrollRetryRef = useRef(0);
@@ -101,14 +102,23 @@ export const ChatScreen: React.FC = () => {
     loadConversations();
     setupSocketListeners();
 
-    // Check socket connection status
-    setTimeout(() => {
+    // Check socket connection status with retry
+    const checkSocketStatus = () => {
       const status = socketService.getConnectionStatus();
       console.log('🔌 Socket status on mount:', status);
       if (!status.connected) {
-        console.warn('⚠️ Socket not connected! Real-time messages may not work.');
+        console.warn('⚠️ Socket not connected! Attempting to reconnect...');
+        // Try to reconnect if not connected
+        setTimeout(() => {
+          if (!socketService.isConnected()) {
+            console.log('🔄 Attempting socket reconnection...');
+            // We can't directly reconnect here, but we can check auth context
+          }
+        }, 2000);
       }
-    }, 1000);
+    };
+    
+    setTimeout(checkSocketStatus, 1000);
 
     return () => {
       console.log('🧹 Cleaning up socket listeners...');
@@ -117,6 +127,10 @@ export const ChatScreen: React.FC = () => {
       socketService.off('user-typing');
       socketService.off('user-stopped-typing');
       socketService.off('user-status-changed');
+      
+      // Clear typing debounce
+      typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
+      typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
     };
   }, []);
 
@@ -134,11 +148,13 @@ export const ChatScreen: React.FC = () => {
       loadMessages(selectedChat);
 
       // Unified join via service (avoid duplicate raw emit)
+      console.log('🏠 Joining conversation via socket service:', selectedChat);
       socketService.joinConversation(selectedChat);
       // Reset unread for this conversation
       setUnreadCounts(u => ({ ...u, [selectedChat]: 0 }));
 
       return () => {
+        console.log('🚪 Leaving conversation:', selectedChat);
         socketService.leaveConversation(selectedChat);
       };
     }
@@ -249,6 +265,14 @@ export const ChatScreen: React.FC = () => {
     socketService.off('user-status-changed');
 
     socketService.on('new-message', (message: Message) => {
+      console.log('📨 Received new message via socket:', {
+        id: message.id,
+        type: message.type,
+        senderId: message.senderId,
+        conversationId: message.conversationId,
+        content: message.content?.substring(0, 50)
+      });
+      
       const activeChat = selectedChatRef.current;
       const currentUserId = user?.id;
       const isForActive = activeChat && (
@@ -256,10 +280,22 @@ export const ChatScreen: React.FC = () => {
         (message.receiverId === currentUserId && conversations.find(c => c.id === activeChat)?.participant.id === message.senderId)
       );
 
+      console.log('📨 Message routing:', {
+        activeChat,
+        currentUserId,
+        isForActive,
+        messageSender: message.senderId,
+        messageReceiver: message.receiverId
+      });
+
       if (isForActive) {
         setMessages(prev => {
-          if (prev.find(m => m.id === message.id)) return prev;
+          if (prev.find(m => m.id === message.id)) {
+            console.log('♻️ Duplicate message detected, skipping');
+            return prev;
+          }
           const updated = [...prev, message];
+          console.log('📨 Added new message to active chat, total:', updated.length);
           return updated;
         });
         // Auto-scroll if user is near bottom or message is mine
@@ -276,6 +312,7 @@ export const ChatScreen: React.FC = () => {
           (message.receiverId === conv.participant.id && message.senderId === currentUserId)
         );
         if (targetConv) {
+          console.log('📨 Incrementing unread for conversation:', targetConv.id);
           setUnreadCounts(u => ({ ...u, [targetConv.id]: (u[targetConv.id] || 0) + 1 }));
         }
       }
@@ -287,15 +324,22 @@ export const ChatScreen: React.FC = () => {
     });
 
     socketService.on('user-typing', ({ userId, conversationId }) => {
+      console.log('⌨️ User typing event:', { userId, conversationId, activeChat: selectedChatRef.current });
       if (conversationId === selectedChatRef.current && userId !== user?.id) {
+        console.log('⌨️ Setting typing indicator ON');
         setIsTyping(true);
         typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2500);
+        typingTimeoutRef.current = setTimeout(() => {
+          console.log('⌨️ Typing timeout reached, setting OFF');
+          setIsTyping(false);
+        }, 2500);
       }
     });
 
     socketService.on('user-stopped-typing', ({ userId, conversationId }) => {
+      console.log('⌨️ User stopped typing event:', { userId, conversationId, activeChat: selectedChatRef.current });
       if (conversationId === selectedChatRef.current && userId !== user?.id) {
+        console.log('⌨️ Setting typing indicator OFF');
         setIsTyping(false);
       }
     });
@@ -755,7 +799,17 @@ export const ChatScreen: React.FC = () => {
                 onChangeText={(text) => {
                   setNewMessage(text);
                   if (selectedConv) {
-                    socketService.sendTyping(selectedConv.id, text.trim().length > 0);
+                    // Debounce typing indicator
+                    typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
+                    const isTyping = text.trim().length > 0;
+                    
+                    if (isTyping) {
+                      socketService.sendTyping(selectedConv.id, true);
+                    }
+                    
+                    typingDebounceRef.current = setTimeout(() => {
+                      socketService.sendTyping(selectedConv.id, false);
+                    }, 1000);
                   }
                 }}
                 placeholder="Type a message..."

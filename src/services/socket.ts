@@ -64,31 +64,38 @@ class SocketService {
   joinConversation(conversationId: string) {
     if (this.socket?.connected) {
       console.log('🏠 Joining conversation:', conversationId);
-      this.socket.emit('join-conversation', { conversationId });
+      this.socket.emit('join-conversation', conversationId);
     }
   }
 
   leaveConversation(conversationId: string) {
     if (this.socket?.connected) {
       console.log('🚪 Leaving conversation:', conversationId);
-      this.socket.emit('leave-conversation', { conversationId });
+      this.socket.emit('leave-conversation', conversationId);
     }
   }
 
   sendTyping(conversationId: string, isTyping: boolean) {
     if (this.socket?.connected) {
-      this.socket.emit(isTyping ? 'typing-start' : 'typing-stop', { conversationId });
+      const event = isTyping ? 'typing-start' : 'typing-stop';
+      console.log(`⌨️ Emitting ${event} for conversation:`, conversationId);
+      this.socket.emit(event, { conversationId });
     }
   }
 
   markMessageAsRead(messageId: string) {
     if (this.socket?.connected) {
-      this.socket.emit('mark-read', { messageId });
+      this.socket.emit('mark-message-read', { messageId });
     }
   }
 
   sendMessage(data: { conversationId: string; receiverId: string; content?: string; type?: 'TEXT' | 'IMAGE' | 'FILE'; imageUrl?: string; fileName?: string; fileSize?: number }) {
     if (this.socket?.connected) {
+      console.log('📤 Emitting socket message:', { 
+        conversationId: data.conversationId, 
+        type: data.type,
+        hasContent: !!data.content 
+      });
       this.socket.emit('send-message', {
         conversationId: data.conversationId,
         receiverId: data.receiverId,
