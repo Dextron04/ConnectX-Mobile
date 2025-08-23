@@ -56,7 +56,7 @@ export const ChatScreen: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [activeTab, setActiveTab] = useState<'chats' | 'library' | 'settings'>('chats');
-  
+
   // Digital Library states
   const [sharedImages, setSharedImages] = useState<SharedImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -236,7 +236,7 @@ export const ChatScreen: React.FC = () => {
       // Unified join via service (avoid duplicate raw emit)
       console.log('🏠 Joining conversation via socket service:', selectedChat);
       socketService.joinConversation(selectedChat);
-      
+
       // Reset unread for this conversation with a small delay to ensure state is updated
       const markAsRead = async () => {
         setTimeout(() => {
@@ -255,7 +255,7 @@ export const ChatScreen: React.FC = () => {
           });
         }, 100); // Small delay to ensure UI updates
       };
-      
+
       markAsRead();
 
       return () => {
@@ -306,19 +306,19 @@ export const ChatScreen: React.FC = () => {
 
   const loadUnreadCounts = async () => {
     if (conversations.length === 0 || !user?.id) return;
-    
+
     try {
       console.log('🔍 Loading unread counts for', conversations.length, 'conversations');
       const counts: Record<string, number> = {};
       let totalUnread = 0;
-      
+
       for (const conv of conversations) {
         try {
           const messages = await connectXAPI.getMessages(conv.id);
-          const unreadMessages = messages.filter(m => 
+          const unreadMessages = messages.filter(m =>
             m.receiverId === user.id && !m.isRead
           );
-          
+
           const unreadCount = unreadMessages.length;
           if (unreadCount > 0) {
             counts[conv.id] = unreadCount;
@@ -329,10 +329,10 @@ export const ChatScreen: React.FC = () => {
           console.log('Could not get messages for conversation:', conv.id, error);
         }
       }
-      
+
       console.log('✅ Final unread counts:', counts);
       console.log('✅ Total unread:', totalUnread);
-      
+
       setUnreadCounts(counts);
       setTotalUnreadCount(totalUnread);
     } catch (error) {
@@ -484,25 +484,25 @@ export const ChatScreen: React.FC = () => {
             currentUser: currentUserId,
             conversationId: message.conversationId
           });
-          
+
           // Find the conversation for this message
           const targetConv = conversations.find(conv =>
             conv.id === message.conversationId
           );
-          
+
           if (targetConv) {
             console.log('🎯 Found target conversation:', targetConv.participant.username, targetConv.id);
-            
+
             setUnreadCounts(prevCounts => {
               const currentCount = prevCounts[targetConv.id] || 0;
               const newCount = currentCount + 1;
               console.log(`🔥 UNREAD COUNT UPDATE: ${targetConv.participant.username} (${targetConv.id})`);
               console.log(`   Previous count: ${currentCount}`);
               console.log(`   New count: ${newCount}`);
-              console.log(`   All counts:`, {...prevCounts, [targetConv.id]: newCount});
+              console.log(`   All counts:`, { ...prevCounts, [targetConv.id]: newCount });
               return { ...prevCounts, [targetConv.id]: newCount };
             });
-            
+
             setTotalUnreadCount(prevTotal => {
               const newTotal = prevTotal + 1;
               console.log(`🔥 TOTAL UNREAD UPDATE: ${prevTotal} -> ${newTotal}`);
@@ -510,7 +510,7 @@ export const ChatScreen: React.FC = () => {
             });
           } else {
             console.log('❌ Could not find conversation for message:', message.conversationId);
-            console.log('Available conversations:', conversations.map(c => ({id: c.id, name: c.participant.username})));
+            console.log('Available conversations:', conversations.map(c => ({ id: c.id, name: c.participant.username })));
           }
         } else {
           console.log('ℹ️ Message not counted as unread:', {
@@ -767,11 +767,11 @@ export const ChatScreen: React.FC = () => {
   const renderConversationItem = useCallback(({ item }: { item: Conversation }) => {
     const unread = unreadCounts[item.id] || 0;
     const isUnread = unread > 0;
-    
+
     return (
       <TouchableOpacity
         style={[
-          styles.conversationItem, 
+          styles.conversationItem,
           selectedChat === item.id && styles.selectedConversation,
           isUnread && styles.unreadConversation
         ]}
@@ -799,9 +799,9 @@ export const ChatScreen: React.FC = () => {
           </View>
           {item.lastMessage && (
             <Text style={[styles.lastMessage, isUnread && styles.unreadLastMessage]} numberOfLines={1}>
-              {item.lastMessage.type === 'IMAGE' ? '📷 Image' : 
-               item.lastMessage.type === 'FILE' ? '📎 File' : 
-               item.lastMessage.content || 'Message'}
+              {item.lastMessage.type === 'IMAGE' ? '📷 Image' :
+                item.lastMessage.type === 'FILE' ? '📎 File' :
+                  item.lastMessage.content || 'Message'}
             </Text>
           )}
         </View>
@@ -873,7 +873,7 @@ export const ChatScreen: React.FC = () => {
             </Text>
           )}
         </View>
-        
+
         {/* Time and status outside the bubble */}
         <View style={[
           styles.messageTimeContainer,
@@ -938,18 +938,18 @@ export const ChatScreen: React.FC = () => {
     if (activeTab !== 'library') {
       return;
     }
-    
+
     try {
       setLibraryLoading(true);
       const allImages = await connectXAPI.getSharedImages();
-      
+
       let filteredImages = allImages;
       if (libraryTab === 'sent') {
         filteredImages = allImages.filter(img => img.sender.id === user?.id);
       } else if (libraryTab === 'received') {
         filteredImages = allImages.filter(img => img.receiver.id === user?.id);
       }
-      
+
       setSharedImages(filteredImages);
     } catch (error: any) {
       console.error('Failed to load library images:', error);
@@ -992,7 +992,7 @@ export const ChatScreen: React.FC = () => {
     const statusBadge = getImageStatusBadge(item);
     const isMyImage = item.sender.id === user?.id;
     const imageUrl = item.url.startsWith('http') ? item.url : `https://tre.dextron04.in${item.url}`;
-    
+
     return (
       <TouchableOpacity
         style={styles.libraryImageItem}
@@ -1028,7 +1028,7 @@ export const ChatScreen: React.FC = () => {
       <View style={styles.libraryContent}>
         <Text style={styles.tabTitle}>Digital Library</Text>
         <Text style={styles.tabSubtitle}>Your shared images and files</Text>
-        
+
         {/* Library Filter Tabs */}
         <View style={styles.libraryTabContainer}>
           <TouchableOpacity
@@ -1056,7 +1056,7 @@ export const ChatScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
-        
+
         {/* Images Grid */}
         {libraryLoading ? (
           <View style={styles.libraryLoadingContainer}>
@@ -1092,9 +1092,9 @@ export const ChatScreen: React.FC = () => {
     <View style={styles.tabContent}>
       <View style={styles.settingsContent}>
         <Text style={styles.tabTitle}>Settings</Text>
-        
+
         <View style={styles.settingsList}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingsItem}
             onPress={() => navigation.navigate('Settings' as never)}
           >
@@ -1108,7 +1108,7 @@ export const ChatScreen: React.FC = () => {
             <Text style={styles.settingsChevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingsItem}
             onPress={() => navigation.navigate('NotificationSettings' as never)}
           >
@@ -1197,261 +1197,262 @@ export const ChatScreen: React.FC = () => {
 
     return (
       <View style={styles.chatViewContainer}>
-      <View style={styles.chatHeader}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => setSelectedChat(null)}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-
-        <View style={styles.chatHeaderInfo}>
-          <Text style={styles.chatHeaderTitle} numberOfLines={1}>
-            {selectedConv?.participant.username}
-          </Text>
-          {selectedConv?.participant.isOnline ? (
-            <Text style={styles.onlineStatus}>Online</Text>
-          ) : (
-            <Text style={styles.offlineStatus}>Offline</Text>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={() => navigation.navigate('Settings' as never)}
-        >
-          <Text style={styles.settingsText}>⚙️</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.settingsButton, { marginLeft: 8 }]}
-          onPress={testSocketConnection}
-        >
-          <Text style={styles.settingsText}>🔌</Text>
-        </TouchableOpacity>
-      </View>
-
-      <KeyboardAvoidingView
-        key={`chat-${selectedChat}-${messages.length}`} // Force re-render when conversation or message count changes
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        {isLoadingMessages ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#3b82f6" />
-          </View>
-        ) : (
-          <>
-            <FlatList
-              ref={messagesEndRef}
-              data={messages.slice().reverse()} // Reverse for inverted display
-              keyExtractor={item => getStableMessageKey(item)}
-              renderItem={renderMessageItem}
-              style={styles.messagesList}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.messagesContainer}
-              removeClippedSubviews={false}
-              inverted // This makes newest messages appear at bottom
-              onScroll={handleScroll}
-              scrollEventThrottle={32}
-              onContentSizeChange={(width, height) => {
-                contentSizeRef.current = { width, height };
-                // With inverted, we don't need aggressive scrolling
-                // New messages automatically appear at bottom
-              }}
-              ListEmptyComponent={
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>No messages yet</Text>
-                  <Text style={styles.emptyStateSubtext}>Send a message to start the conversation</Text>
-                </View>
-              }
-            />
-
-            {isTyping && (
-              <View style={styles.typingIndicator}>
-                <Text style={styles.typingText}>{selectedConv?.participant.username} is typing...</Text>
-              </View>
-            )}
-
-            <View style={styles.messageInput}>
-              <TouchableOpacity
-                style={styles.attachButton}
-                onPress={() => setShowImagePicker(true)}
-              >
-                <Text style={styles.attachButtonText}>📷</Text>
-              </TouchableOpacity>
-              <TextInput
-                style={styles.textInput}
-                value={newMessage}
-                onChangeText={(text) => {
-                  setNewMessage(text);
-                  if (selectedConv) {
-                    // Debounce typing indicator
-                    typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
-                    const isTyping = text.trim().length > 0;
-
-                    if (isTyping) {
-                      socketService.sendTyping(selectedConv.id, true);
-                    }
-
-                    typingDebounceRef.current = setTimeout(() => {
-                      socketService.sendTyping(selectedConv.id, false);
-                    }, 1000);
-                  }
-                }}
-                placeholder="Type a message..."
-                placeholderTextColor="#6B7280"
-                multiline
-                maxLength={1000}
-                onSubmitEditing={sendMessage}
-                blurOnSubmit={false}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  (!newMessage.trim() || isSending) && styles.disabledSendButton
-                ]}
-                onPress={sendMessage}
-                disabled={!newMessage.trim() || isSending}
-              >
-                {isSending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.sendButtonText}>Send</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </KeyboardAvoidingView>
-
-      {/* Image Picker Modal */}
-      <Modal
-        visible={showImagePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowImagePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.imagePickerModal}>
-            <Text style={styles.modalTitle}>Add Photo</Text>
-            <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
-              <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
-              <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.imagePickerOption, styles.cancelOption]}
-              onPress={() => setShowImagePicker(false)}
-            >
-              <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Image Picker Modal */}
-      <Modal
-        visible={showImagePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowImagePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.imagePickerModal}>
-            <Text style={styles.modalTitle}>Add Photo</Text>
-            <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
-              <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
-              <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.imagePickerOption, styles.cancelOption]}
-              onPress={() => setShowImagePicker(false)}
-            >
-              <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Chat Image Viewer Modal */}
-      <Modal
-        visible={!!selectedImage}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedImage(null)}
-      >
-        <View style={styles.imageViewerModal}>
+        <View style={styles.chatHeader}>
           <TouchableOpacity
-            style={styles.imageViewerClose}
-            onPress={() => setSelectedImage(null)}
+            style={styles.backButton}
+            onPress={() => setSelectedChat(null)}
           >
-            <Text style={styles.closeButtonText}>✕</Text>
+            <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          {selectedImage && (
-            <Image
-              source={{ uri: selectedImage }}
-              style={styles.fullScreenImage}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      </Modal>
-      
-      {/* Library Image Viewer Modal */}
-      <Modal
-        visible={!!selectedLibraryImage}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedLibraryImage(null)}
-      >
-        <View style={styles.libraryModalContainer}>
-          <View style={styles.libraryModalContent}>
-            <View style={styles.libraryModalHeader}>
-              <Text style={styles.libraryModalTitle} numberOfLines={1}>
-                {selectedLibraryImage?.originalName}
-              </Text>
-              <TouchableOpacity
-                style={styles.libraryCloseButton}
-                onPress={() => setSelectedLibraryImage(null)}
-              >
-                <Text style={styles.libraryCloseButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
 
-            {selectedLibraryImage && (
-              <>
-                <Image
-                  source={{
-                    uri: selectedLibraryImage.url.startsWith('http')
-                      ? selectedLibraryImage.url
-                      : `https://tre.dextron04.in${selectedLibraryImage.url}`
-                  }}
-                  style={styles.libraryModalImage}
-                  resizeMode="contain"
-                />
-
-                <View style={styles.libraryModalInfo}>
-                  <View style={styles.libraryModalUserInfo}>
-                    <Text style={styles.libraryModalUserText}>
-                      {selectedLibraryImage.sender.id === user?.id
-                        ? `Shared with ${selectedLibraryImage.receiver.username}`
-                        : `Shared by ${selectedLibraryImage.sender.username}`
-                      }
-                    </Text>
-                    <Text style={styles.libraryModalDate}>
-                      {new Date(selectedLibraryImage.createdAt).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              </>
+          <View style={styles.chatHeaderInfo}>
+            <Text style={styles.chatHeaderTitle} numberOfLines={1}>
+              {selectedConv?.participant.username}
+            </Text>
+            {selectedConv?.participant.isOnline ? (
+              <Text style={styles.onlineStatus}>Online</Text>
+            ) : (
+              <Text style={styles.offlineStatus}>Offline</Text>
             )}
           </View>
+
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => navigation.navigate('Settings' as never)}
+          >
+            <Text style={styles.settingsText}>⚙️</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.settingsButton, { marginLeft: 8 }]}
+            onPress={testSocketConnection}
+          >
+            <Text style={styles.settingsText}>🔌</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <KeyboardAvoidingView
+          key={`chat-${selectedChat}-${messages.length}`}
+          style={styles.chatContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 50 : 0}
+        >
+          {isLoadingMessages ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#3b82f6" />
+            </View>
+          ) : (
+            <>
+              <FlatList
+                ref={messagesEndRef}
+                data={messages.slice().reverse()} // Reverse for inverted display
+                keyExtractor={item => getStableMessageKey(item)}
+                renderItem={renderMessageItem}
+                style={styles.messagesList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.messagesContainer}
+                removeClippedSubviews={false}
+                inverted // This makes newest messages appear at bottom
+                onScroll={handleScroll}
+                scrollEventThrottle={32}
+                onContentSizeChange={(width, height) => {
+                  contentSizeRef.current = { width, height };
+                  // With inverted, we don't need aggressive scrolling
+                  // New messages automatically appear at bottom
+                }}
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>No messages yet</Text>
+                    <Text style={styles.emptyStateSubtext}>Send a message to start the conversation</Text>
+                  </View>
+                }
+              />
+
+              {isTyping && (
+                <View style={styles.typingIndicator}>
+                  <Text style={styles.typingText}>{selectedConv?.participant.username} is typing...</Text>
+                </View>
+              )}
+
+              <View style={[styles.messageInput, { paddingBottom: Platform.OS === 'ios' ? 20 : 12 }]}>
+                <TouchableOpacity
+                  style={styles.attachButton}
+                  onPress={() => setShowImagePicker(true)}
+                >
+                  <Text style={styles.attachButtonText}>📷</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.textInput}
+                  value={newMessage}
+                  onChangeText={(text) => {
+                    setNewMessage(text);
+                    if (selectedConv) {
+                      // Debounce typing indicator
+                      typingDebounceRef.current && clearTimeout(typingDebounceRef.current);
+                      const isTyping = text.trim().length > 0;
+
+                      if (isTyping) {
+                        socketService.sendTyping(selectedConv.id, true);
+                      }
+
+                      typingDebounceRef.current = setTimeout(() => {
+                        socketService.sendTyping(selectedConv.id, false);
+                      }, 1000);
+                    }
+                  }}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#6B7280"
+                  multiline
+                  maxLength={1000}
+                  onSubmitEditing={sendMessage}
+                  blurOnSubmit={false}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendButton,
+                    (!newMessage.trim() || isSending) && styles.disabledSendButton
+                  ]}
+                  onPress={sendMessage}
+                  disabled={!newMessage.trim() || isSending}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.sendButtonText}>Send</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </KeyboardAvoidingView>
+
+        {/* Image Picker Modal */}
+        <Modal
+          visible={showImagePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowImagePicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.imagePickerModal}>
+              <Text style={styles.modalTitle}>Add Photo</Text>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
+                <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
+                <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.imagePickerOption, styles.cancelOption]}
+                onPress={() => setShowImagePicker(false)}
+              >
+                <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Image Picker Modal */}
+        <Modal
+          visible={showImagePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowImagePicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.imagePickerModal}>
+              <Text style={styles.modalTitle}>Add Photo</Text>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
+                <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
+                <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.imagePickerOption, styles.cancelOption]}
+                onPress={() => setShowImagePicker(false)}
+              >
+                <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Chat Image Viewer Modal */}
+        <Modal
+          visible={!!selectedImage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedImage(null)}
+        >
+          <View style={styles.imageViewerModal}>
+            <TouchableOpacity
+              style={styles.imageViewerClose}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.fullScreenImage}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </Modal>
+
+        {/* Library Image Viewer Modal */}
+        <Modal
+          visible={!!selectedLibraryImage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedLibraryImage(null)}
+        >
+          <View style={styles.libraryModalContainer}>
+            <View style={styles.libraryModalContent}>
+              <View style={styles.libraryModalHeader}>
+                <Text style={styles.libraryModalTitle} numberOfLines={1}>
+                  {selectedLibraryImage?.originalName}
+                </Text>
+                <TouchableOpacity
+                  style={styles.libraryCloseButton}
+                  onPress={() => setSelectedLibraryImage(null)}
+                >
+                  <Text style={styles.libraryCloseButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {selectedLibraryImage && (
+                <>
+                  <Image
+                    source={{
+                      uri: selectedLibraryImage.url.startsWith('http')
+                        ? selectedLibraryImage.url
+                        : `https://tre.dextron04.in${selectedLibraryImage.url}`
+                    }}
+                    style={styles.libraryModalImage}
+                    resizeMode="contain"
+                  />
+
+                  <View style={styles.libraryModalInfo}>
+                    <View style={styles.libraryModalUserInfo}>
+                      <Text style={styles.libraryModalUserText}>
+                        {selectedLibraryImage.sender.id === user?.id
+                          ? `Shared with ${selectedLibraryImage.receiver.username}`
+                          : `Shared by ${selectedLibraryImage.sender.username}`
+                        }
+                      </Text>
+                      <Text style={styles.libraryModalDate}>
+                        {new Date(selectedLibraryImage.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   };
@@ -1612,7 +1613,7 @@ const styles = StyleSheet.create({
   },
   selectedConversation: {
     backgroundColor: theme.colors.primary,
-    transform: [{scale: 0.98}],
+    transform: [{ scale: 0.98 }],
   },
   unreadConversation: {
     backgroundColor: theme.colors.surface,
@@ -1842,30 +1843,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
     borderTopWidth: 1,
     borderTopColor: theme.colors.sidebarBorder,
     backgroundColor: theme.colors.sidebar,
     gap: theme.spacing.sm,
     ...theme.shadows.md,
+    minHeight: 60,
   },
   textInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: theme.colors.inputBorder,
     borderRadius: theme.borderRadius['2xl'],
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     maxHeight: 100,
+    minHeight: 38,
     fontSize: theme.typography.fontSizes.base,
     color: theme.colors.foreground,
     backgroundColor: theme.colors.input,
+    textAlignVertical: 'center',
   },
   sendButton: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius['2xl'],
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm + 2,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
     ...theme.shadows.sm,
   },
   disabledSendButton: {
@@ -1907,8 +1915,8 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.lg,
   },
   attachButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: theme.borderRadius['2xl'],
     backgroundColor: theme.colors.card,
     justifyContent: 'center',
@@ -1989,7 +1997,7 @@ const styles = StyleSheet.create({
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height * 0.8,
   },
-  
+
   // Tab Bar Styles
   tabBar: {
     flexDirection: 'row',
@@ -2015,7 +2023,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs / 2,
   },
   activeTabIcon: {
-    transform: [{scale: 1.1}],
+    transform: [{ scale: 1.1 }],
   },
   tabLabel: {
     fontSize: theme.typography.fontSizes.xs,
@@ -2030,7 +2038,7 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: theme.typography.fontWeights.bold,
   },
-  
+
   // Library Tab Styles
   libraryContent: {
     flex: 1,
@@ -2203,7 +2211,7 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSizes.sm,
     color: theme.colors.textMuted,
   },
-  
+
   // Settings Tab Styles
   settingsContent: {
     flex: 1,
@@ -2259,7 +2267,7 @@ const styles = StyleSheet.create({
   dangerText: {
     color: theme.colors.error,
   },
-  
+
   // Missing styles
   messageTime: {
     fontSize: theme.typography.fontSizes.xs,
