@@ -17,6 +17,7 @@ export interface LoginResponse {
 
 export interface Message {
   id: string;
+  conversationId?: string;
   content?: string;
   type: 'TEXT' | 'IMAGE' | 'FILE';
   senderId: string;
@@ -133,13 +134,23 @@ class ConnectXAPI {
     return response.data.messages;
   }
 
-  async sendMessage(receiverId: string, content: string, type: 'TEXT' | 'IMAGE' | 'FILE' = 'TEXT'): Promise<Message> {
+  /**
+   * Send a message within a conversation.
+   * NOTE: Server POST /api/messages requires BOTH conversationId and receiverId.
+   */
+  async sendMessage(conversationId: string, receiverId: string, content: string, type: 'TEXT' | 'IMAGE' | 'FILE' = 'TEXT'): Promise<Message> {
+    if (!conversationId) throw new Error('conversationId is required');
     const response = await this.api.post('/messages', {
+      conversationId,
       receiverId,
       content,
       type,
     });
-    return response.data;
+    // Some server routes wrap message inside { message }
+  const msg = response.data.message || response.data;
+  // Ensure conversationId exists on message for downstream logic
+  if (!msg.conversationId) msg.conversationId = conversationId;
+  return msg;
   }
 
   async markMessageAsRead(messageId: string): Promise<void> {

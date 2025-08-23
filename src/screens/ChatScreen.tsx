@@ -259,7 +259,18 @@ export const ChatScreen: React.FC = () => {
     setNewMessage('');
 
     try {
-      const message = await connectXAPI.sendMessage(selectedConv.participant.id, messageContent);
+      // Stop typing indicator
+      socketService.sendTyping(selectedConv.id, false);
+      // Optimistic emit via socket for real-time delivery
+      if (socketService.isConnected()) {
+        socketService.sendMessage({
+          conversationId: selectedConv.id,
+          receiverId: selectedConv.participant.id,
+          content: messageContent,
+          type: 'TEXT'
+        });
+      }
+      const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
       
       // Add message to current conversation
       setMessages(prev => {
@@ -573,7 +584,12 @@ export const ChatScreen: React.FC = () => {
               <TextInput
                 style={styles.textInput}
                 value={newMessage}
-                onChangeText={setNewMessage}
+                onChangeText={(text)=>{
+                  setNewMessage(text);
+                  if (selectedConv) {
+                    socketService.sendTyping(selectedConv.id, text.trim().length>0);
+                  }
+                }}
                 placeholder="Type a message..."
                 multiline
                 maxLength={1000}

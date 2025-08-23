@@ -77,13 +77,27 @@ class SocketService {
 
   sendTyping(conversationId: string, isTyping: boolean) {
     if (this.socket?.connected) {
-      this.socket.emit('typing', { conversationId, isTyping });
+  this.socket.emit(isTyping ? 'typing-start' : 'typing-stop', { conversationId });
     }
   }
 
   markMessageAsRead(messageId: string) {
     if (this.socket?.connected) {
       this.socket.emit('mark-read', { messageId });
+    }
+  }
+
+  sendMessage(data: { conversationId: string; receiverId: string; content?: string; type?: 'TEXT' | 'IMAGE' | 'FILE'; imageUrl?: string; fileName?: string; fileSize?: number }) {
+    if (this.socket?.connected) {
+      this.socket.emit('send-message', {
+        conversationId: data.conversationId,
+        receiverId: data.receiverId,
+        content: data.content,
+        type: data.type || 'TEXT',
+        imageUrl: data.imageUrl,
+        fileName: data.fileName,
+        fileSize: data.fileSize
+      });
     }
   }
 
