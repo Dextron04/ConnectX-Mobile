@@ -389,7 +389,7 @@ export const ChatScreen: React.FC = () => {
       setMessages(prev => [...prev, optimisticMessage]);
       // Immediate scroll after adding optimistic message
       setTimeout(() => performAutoScroll(false), 10);
-      
+
       // Send message via HTTP API (this will also emit via socket on server side)
       const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
       // Replace optimistic; do NOT append again if socket already delivered
