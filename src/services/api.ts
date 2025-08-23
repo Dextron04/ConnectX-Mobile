@@ -153,6 +153,41 @@ class ConnectXAPI {
     return msg;
   }
 
+  /**
+   * Send an image message by uploading the image first, then sending a message with the image URL
+   */
+  async sendImageMessage(conversationId: string, receiverId: string, imageUri: string, fileName?: string): Promise<Message> {
+    try {
+      // Create FormData for image upload
+      const formData = new FormData();
+
+      // For React Native, we need to append the file with specific format
+      formData.append('file', {
+        uri: imageUri,
+        type: 'image/jpeg', // Default to JPEG, could be improved to detect actual type
+        name: fileName || `image_${Date.now()}.jpg`,
+      } as any);
+
+      formData.append('receiverId', receiverId);
+      formData.append('conversationId', conversationId);
+
+      // Upload image to messages endpoint with multipart data
+      const response = await this.api.post('/messages/image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const msg = response.data.message || response.data;
+      if (!msg.conversationId) msg.conversationId = conversationId;
+      return msg;
+
+    } catch (error: any) {
+      console.error('Failed to send image message:', error);
+      throw error;
+    }
+  }
+
   async markMessageAsRead(messageId: string): Promise<void> {
     await this.api.patch(`/messages/${messageId}`, {
       isRead: true,

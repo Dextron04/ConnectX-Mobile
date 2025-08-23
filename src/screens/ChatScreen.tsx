@@ -11,8 +11,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+// @ts-ignore
+import * as ImagePicker from 'expo-image-picker';
 import { connectXAPI, Conversation, Message } from '../services/api';
 import socketService from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,6 +34,8 @@ export const ChatScreen: React.FC = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true); // Track if user is near bottom
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImagePicker, setShowImagePicker] = useState(false);
 
   const messagesEndRef = useRef<FlatList>(null);
   const { user, logout } = useAuth();
@@ -351,6 +358,89 @@ export const ChatScreen: React.FC = () => {
     }
   };
 
+  const pickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setShowImagePicker(false);
+      await sendImageMessage(result.assets[0].uri, result.assets[0].fileName);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission Required', 'Permission to access camera is required!');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setShowImagePicker(false);
+      await sendImageMessage(result.assets[0].uri, result.assets[0].fileName);
+    }
+  };
+
+  const sendImageMessage = async (imageUri: string, fileName?: string) => {
+    const selectedConv = conversations.find(c => c.id === selectedChat);
+    if (!selectedConv || isSending) return;
+
+    setIsSending(true);
+    try {
+      // Create optimistic image message
+      const tempId = `temp-img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimisticMessage: Message = {
+        id: tempId,
+        conversationId: selectedConv.id,
+        content: undefined,
+        type: 'IMAGE',
+        senderId: user!.id,
+        receiverId: selectedConv.participant.id,
+        imageUrl: imageUri, // Show local image immediately
+        createdAt: new Date().toISOString(),
+        sender: user!,
+        isRead: false,
+      } as Message;
+
+      setMessages(prev => [...prev, optimisticMessage]);
+      setTimeout(() => performAutoScroll(false), 10);
+
+      // Send image to server
+      const message = await connectXAPI.sendImageMessage(selectedConv.id, selectedConv.participant.id, imageUri, fileName);
+
+      // Replace optimistic message with server response
+      setMessages(prev => prev.map(m => m.id === tempId ? message : m));
+      updateConversationLocally(message);
+      setTimeout(() => performAutoScroll(true), 100);
+
+    } catch (error: any) {
+      console.error('Failed to send image:', error);
+      Alert.alert('Error', 'Failed to send image');
+      // Remove failed optimistic message
+      setMessages(prev => prev.filter(m => !m.id.startsWith('temp-img-')));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleLogout = async () => {
     Alert.alert(
       'Logout',
@@ -460,12 +550,26 @@ export const ChatScreen: React.FC = () => {
         )}
 
         {item.type === 'IMAGE' && (
-          <Text style={[
-            styles.messageContent,
-            isMyMessage ? styles.myMessageText : styles.otherMessageText
-          ]}>
-            📷 Image
-          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              const imageUrl = item.imageUrl?.startsWith('http')
+                ? item.imageUrl
+                : `https://tre.dextron04.in${item.imageUrl}`;
+              setSelectedImage(imageUrl);
+            }}
+            style={styles.imageMessageContainer}
+          >
+            <Image
+              source={{
+                uri: item.imageUrl?.startsWith('http')
+                  ? item.imageUrl
+                  : `https://tre.dextron04.in${item.imageUrl}`
+              }}
+              style={styles.messageImage}
+              resizeMode="cover"
+              onError={() => console.log('Failed to load message image:', item.imageUrl)}
+            />
+          </TouchableOpacity>
         )}
 
         {item.type === 'FILE' && (
@@ -639,6 +743,12 @@ export const ChatScreen: React.FC = () => {
             )}
 
             <View style={styles.messageInput}>
+              <TouchableOpacity
+                style={styles.attachButton}
+                onPress={() => setShowImagePicker(true)}
+              >
+                <Text style={styles.attachButtonText}>📷</Text>
+              </TouchableOpacity>
               <TextInput
                 style={styles.textInput}
                 value={newMessage}
@@ -672,6 +782,56 @@ export const ChatScreen: React.FC = () => {
           </>
         )}
       </KeyboardAvoidingView>
+
+      {/* Image Picker Modal */}
+      <Modal
+        visible={showImagePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowImagePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.imagePickerModal}>
+            <Text style={styles.modalTitle}>Add Photo</Text>
+            <TouchableOpacity style={styles.imagePickerOption} onPress={takePhoto}>
+              <Text style={styles.imagePickerOptionText}>📷 Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.imagePickerOption} onPress={pickImage}>
+              <Text style={styles.imagePickerOptionText}>🖼️ Choose from Library</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.imagePickerOption, styles.cancelOption]}
+              onPress={() => setShowImagePicker(false)}
+            >
+              <Text style={[styles.imagePickerOptionText, styles.cancelText]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={!!selectedImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <View style={styles.imageViewerModal}>
+          <TouchableOpacity
+            style={styles.imageViewerClose}
+            onPress={() => setSelectedImage(null)}
+          >
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+          {selectedImage && (
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -995,5 +1155,93 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9ca3af',
     textAlign: 'center',
+  },
+  // Image message styles
+  imageMessageContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+  },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attachButtonText: {
+    fontSize: 18,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  imagePickerModal: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 30,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#1f2937',
+  },
+  imagePickerOption: {
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: '#f3f4f6',
+  },
+  imagePickerOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#1f2937',
+  },
+  cancelOption: {
+    backgroundColor: '#fee2e2',
+  },
+  cancelText: {
+    color: '#dc2626',
+  },
+  imageViewerModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  fullScreenImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.8,
   },
 });
