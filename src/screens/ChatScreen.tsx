@@ -49,8 +49,36 @@ export const ChatScreen: React.FC = () => {
   const autoScrollRetryRef = useRef(0);
   const contentSizeRef = useRef({ width: 0, height: 0 });
 
-  // Cache to prevent processing duplicate messages
-  const processedMessagesRef = useRef<Set<string>>(new Set());
+  // Function to deduplicate messages
+  const deduplicateMessages = useCallback((messages: Message[]) => {
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+    
+    // First pass - identify duplicates
+    messages.forEach(message => {
+      if (seen.has(message.id)) {
+        duplicates.push(message.id);
+      }
+      seen.add(message.id);
+    });
+    
+    // Log duplicates if found
+    if (duplicates.length > 0) {
+      console.log(`🗑️ Found ${duplicates.length} duplicate messages:`, duplicates);
+    }
+    
+    // Second pass - filter
+    seen.clear();
+    return messages.filter(message => {
+      if (seen.has(message.id)) {
+        return false;
+      }
+      seen.add(message.id);
+      return true;
+    });
+  }, []);
+
+  // This has been replaced with processedMessageIds defined above
 
   // Enhanced auto-scroll with multiple fallback strategies
   const performAutoScroll = (animated = true) => {
@@ -95,9 +123,30 @@ export const ChatScreen: React.FC = () => {
     setTimeout(() => performAutoScroll(false), 150);
   };
 
+  // Track processed message IDs to prevent duplicates
+  const processedMessageIds = useRef(new Set<string>());
+  
+  // Generate stable keys for messages to prevent duplicate key issues in React rendering
+  const getStableMessageKey = useCallback((message: Message) => {
+    // For real messages, use the ID directly
+    if (!message.id.startsWith('temp-')) {
+      return `msg-${message.id}`;
+    }
+    
+    // For temp messages, create a composite key with content and timestamp
+    // to ensure uniqueness even if multiple temp messages are created
+    const contentHash = message.content?.substring(0, 20) || '';
+    return `tmp-${message.senderId}-${contentHash}-${message.createdAt}`;
+  }, []);
+
   useEffect(() => { isNearBottomRef.current = isNearBottom; }, [isNearBottom]);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { 
+    messagesRef.current = messages;
+    // Clear processed message tracking when messages change significantly
+    const currentIds = new Set(messages.map(m => m.id).filter(id => !id.startsWith('temp-')));
+    processedMessageIds.current = currentIds;
+  }, [messages]);
 
   // Load conversations on mount
   useEffect(() => {
@@ -207,7 +256,7 @@ export const ChatScreen: React.FC = () => {
       console.log('📨 Loading messages for conversation ID:', conversationId);
 
       // Clear processed messages cache when switching conversations
-      processedMessagesRef.current.clear();
+      processedMessageIds.current.clear();
 
       setIsLoadingMessages(true);
       const msgs = await connectXAPI.getMessages(conversationId);
@@ -272,12 +321,12 @@ export const ChatScreen: React.FC = () => {
     socketService.off('user-status-changed');
 
     socketService.on('new-message', (message: Message) => {
-      // Prevent duplicate processing
-      if (processedMessagesRef.current.has(message.id)) {
+      // Prevent duplicate processing using our new tracking system
+      if (processedMessageIds.current.has(message.id)) {
         console.log('♻️ Duplicate message already processed, skipping:', message.id);
         return;
       }
-      processedMessagesRef.current.add(message.id);
+      processedMessageIds.current.add(message.id);
 
       console.log('📨 Received new message via socket:', {
         id: message.id,
@@ -304,12 +353,28 @@ export const ChatScreen: React.FC = () => {
 
       if (isForActive) {
         setMessages(prev => {
-          if (prev.find(m => m.id === message.id)) {
-            console.log('♻️ Duplicate message detected, skipping');
-            return prev;
+          // Use our deduplication function
+          const deduped = deduplicateMessages(prev);
+          
+          // Check for duplicates more thoroughly
+          const existingMessage = deduped.find(m => m.id === message.id);
+          if (existingMessage) {
+            console.log('♻️ Duplicate message detected via socket, skipping:', message.id);
+            return deduped;
           }
-          const updated = [...prev, message];
-          console.log('📨 Added new message to active chat, total:', updated.length);
+          
+          // Also check if this is replacing a temp message
+          const tempMessage = deduped.find(m => m.id.startsWith('temp-') && 
+            m.senderId === message.senderId && 
+            m.content === message.content);
+          
+          if (tempMessage) {
+            console.log('🔄 Replacing temp message with real message:', tempMessage.id, '→', message.id);
+            return deduped.map(m => m.id === tempMessage.id ? message : m);
+          }
+          
+          const updated = [...deduped, message];
+          console.log('📨 Added new message to active chat via socket, total:', updated.length);
           return updated;
         });
         // Auto-scroll if user is near bottom or message is mine
@@ -392,10 +457,28 @@ export const ChatScreen: React.FC = () => {
 
       // Send message via HTTP API (this will also emit via socket on server side)
       const message = await connectXAPI.sendMessage(selectedConv.id, selectedConv.participant.id, messageContent);
-      // Replace optimistic; do NOT append again if socket already delivered
-      setMessages(prev => prev.some(m => m.id === message.id)
-        ? prev.map(m => m.id === tempId ? message : m)
-        : prev.map(m => m.id === tempId ? message : m));
+      
+      // Track this message to prevent duplicate processing
+      processedMessageIds.current.add(message.id);
+      
+      // Replace optimistic message and ensure no duplicates
+      setMessages(prev => {
+        // Use deduplication function first
+        const deduped = deduplicateMessages(prev);
+        
+        // Filter out the temp message
+        const withoutTemp = deduped.filter(m => m.id !== tempId);
+        
+        // Check if real message already exists (from socket)
+        if (withoutTemp.find(m => m.id === message.id)) {
+          console.log('♻️ Real message already exists from socket, just removing temp');
+          return withoutTemp;
+        }
+        
+        // Add the real message
+        console.log('📨 Adding real message from HTTP API response');
+        return [...withoutTemp, message];
+      });
       updateConversationLocally(message);
       // Force scroll to newest message using inverted FlatList logic
       setTimeout(() => performAutoScroll(true), 100);
@@ -766,7 +849,7 @@ export const ChatScreen: React.FC = () => {
             <FlatList
               ref={messagesEndRef}
               data={messages.slice().reverse()} // Reverse for inverted display
-              keyExtractor={(item) => item.id}
+              keyExtractor={item => getStableMessageKey(item)}
               renderItem={renderMessageItem}
               style={styles.messagesList}
               showsVerticalScrollIndicator={false}
