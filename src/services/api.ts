@@ -341,7 +341,7 @@ class ConnectXAPI {
     soundEnabled?: boolean;
   }): Promise<{ success: boolean }> {
     try {
-      const response = await this.api.post('/notifications/settings', settings);
+      const response = await this.api.put('/notifications/settings', settings);
       return response.data;
     } catch (error: any) {
       // If server doesn't support this endpoint, just return success for local handling
