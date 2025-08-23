@@ -19,6 +19,7 @@ class SocketService {
 
   async connect(baseURL?: string) {
     if (this.socket?.connected) {
+      console.log('🔌 Socket already connected, skipping');
       return;
     }
 
@@ -30,6 +31,8 @@ class SocketService {
     const token = await AsyncStorage.getItem('auth_token');
 
     console.log('🔌 Connecting to socket server:', this.baseURL);
+    console.log('🔌 Socket config:', SOCKET_CONFIG);
+    console.log('🔌 Auth token present:', !!token);
 
     this.socket = io(this.baseURL, {
       ...SOCKET_CONFIG,
@@ -45,7 +48,8 @@ class SocketService {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('🔗 Socket connected:', this.socket?.id);
+      console.log('🔗 Socket connected successfully:', this.socket?.id);
+      console.log('🔗 Socket transport:', this.socket?.io.engine.transport.name);
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -53,11 +57,33 @@ class SocketService {
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('❌ Socket connection error:', error.message);
+      console.error('❌ Socket connection error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        error: error
+      });
     });
 
     this.socket.on('error', (error) => {
       console.error('🔌 Socket error:', error);
+    });
+
+    // Additional debugging events
+    this.socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+    });
+
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('🔄 Socket reconnection attempt:', attemptNumber);
+    });
+
+    this.socket.on('reconnect_error', (error) => {
+      console.error('🔄 Socket reconnection error:', error.message);
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('🔄 Socket reconnection failed - giving up');
     });
   }
 

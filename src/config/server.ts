@@ -21,8 +21,11 @@ export const API_TIMEOUT = 10000;
 // Socket configuration
 export const SOCKET_CONFIG = {
     path: '/api/socket/io',
-    transports: ['websocket'] as string[],
+    transports: ['polling', 'websocket'] as string[], // Allow polling fallback
     upgrade: true,
-    forceNew: true,
+    forceNew: false, // Don't force new connection every time
     timeout: 20000,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
 };
