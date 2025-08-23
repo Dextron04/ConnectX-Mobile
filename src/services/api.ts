@@ -44,7 +44,7 @@ class ConnectXAPI {
   private api: AxiosInstance;
   private baseURL: string;
 
-  constructor(baseURL: string = 'http://localhost:3000') {
+  constructor(baseURL: string = 'http://localhost:3456') {
     this.baseURL = baseURL;
     this.api = axios.create({
       baseURL: `${baseURL}/api`,
@@ -113,8 +113,18 @@ class ConnectXAPI {
   }
 
   async getConversations(): Promise<Conversation[]> {
-    const response = await this.api.get('/conversations');
-    return response.data.conversations;
+    try {
+      console.log('🔍 Fetching conversations...');
+      const response = await this.api.get('/conversations');
+      console.log('📦 Conversations response:', response.data);
+      console.log('📊 Number of conversations:', response.data.conversations?.length || 0);
+      return response.data.conversations || [];
+    } catch (error: any) {
+      console.error('❌ Conversations API error:', error);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      throw error;
+    }
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {

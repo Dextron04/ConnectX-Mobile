@@ -70,17 +70,22 @@ export const ChatScreen: React.FC = () => {
 
   const loadConversations = async () => {
     try {
+      console.log('🔄 Loading conversations...');
       setIsLoading(true);
       const convs = await connectXAPI.getConversations();
+      console.log('✅ Loaded conversations:', convs.length, 'conversations');
+      console.log('📋 Conversations data:', JSON.stringify(convs, null, 2));
       setConversations(convs);
       
       // Auto-select first conversation if available
       if (convs.length > 0 && !selectedChat) {
+        console.log('🎯 Auto-selecting first conversation:', convs[0].id);
         setSelectedChat(convs[0].id);
       }
     } catch (error: any) {
-      console.error('Failed to load conversations:', error);
-      Alert.alert('Error', 'Failed to load conversations');
+      console.error('❌ Failed to load conversations:', error);
+      console.error('❌ Error details:', error.message);
+      Alert.alert('Error', `Failed to load conversations: ${error.message}`);
     } finally {
       setIsLoading(false);
     }

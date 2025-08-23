@@ -12,7 +12,7 @@ export interface SocketEvents {
 
 class SocketService {
   private socket: Socket | null = null;
-  private baseURL: string = 'http://localhost:3000';
+  private baseURL: string = 'http://localhost:3456';
 
   async connect(baseURL?: string) {
     if (this.socket?.connected) {

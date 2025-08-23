@@ -37,7 +37,7 @@ export const SettingsScreen: React.FC = () => {
         setIsSecure(url.protocol === 'https:');
       } else {
         // Default to localhost for development
-        setServerURL('localhost:3000');
+        setServerURL('localhost:3456');
         setIsSecure(false);
       }
     } catch (error) {
@@ -105,7 +105,7 @@ export const SettingsScreen: React.FC = () => {
         {
           text: 'Reset',
           onPress: () => {
-            setServerURL('localhost:3000');
+            setServerURL('localhost:3456');
             setIsSecure(false);
           },
         },
@@ -145,7 +145,7 @@ export const SettingsScreen: React.FC = () => {
               style={styles.input}
               value={serverURL}
               onChangeText={setServerURL}
-              placeholder="localhost:3000 or your-server.com"
+              placeholder="localhost:3456 or your-server.com"
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
@@ -173,7 +173,7 @@ export const SettingsScreen: React.FC = () => {
           <View style={styles.urlPreview}>
             <Text style={styles.urlPreviewLabel}>Full URL:</Text>
             <Text style={styles.urlPreviewText}>
-              {isSecure ? 'https' : 'http'}://{serverURL || 'localhost:3000'}
+              {isSecure ? 'https' : 'http'}://{serverURL || 'localhost:3456'}
             </Text>
           </View>
         </View>

@@ -74,18 +74,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const checkAuthState = async () => {
     try {
+      console.log('🔄 Checking auth state...');
       const storedUser = await connectXAPI.getStoredUser();
       const token = await connectXAPI.getStoredToken();
 
+      console.log('👤 Stored user:', storedUser ? 'Found' : 'None');
+      console.log('🔑 Token:', token ? 'Found' : 'None');
+
       if (storedUser && token) {
+        console.log('✅ User authenticated, setting up services...');
         dispatch({ type: 'SET_USER', payload: storedUser });
-        await socketService.connect();
-        await notificationService.initialize();
+        
+        try {
+          await socketService.connect();
+          console.log('🔌 Socket connected');
+        } catch (socketError) {
+          console.error('Socket connection failed:', socketError);
+        }
+        
+        try {
+          await notificationService.initialize();
+          console.log('🔔 Notifications initialized');
+        } catch (notifError) {
+          console.error('Notification initialization failed:', notifError);
+        }
       } else {
+        console.log('❌ No authentication found, showing login');
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     } catch (error) {
-      console.error('Failed to check auth state:', error);
+      console.error('❌ Failed to check auth state:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
@@ -98,8 +116,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { user } = await connectXAPI.login(email, password);
       dispatch({ type: 'SET_USER', payload: user });
       
-      await socketService.connect();
-      await notificationService.initialize();
+      try {
+        await socketService.connect();
+      } catch (socketError) {
+        console.error('Socket connection failed during login:', socketError);
+      }
+      
+      try {
+        await notificationService.initialize();
+      } catch (notifError) {
+        console.error('Notification initialization failed during login:', notifError);
+      }
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Login failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
@@ -114,8 +141,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { user } = await connectXAPI.register(email, password, name);
       dispatch({ type: 'SET_USER', payload: user });
       
-      await socketService.connect();
-      await notificationService.initialize();
+      try {
+        await socketService.connect();
+      } catch (socketError) {
+        console.error('Socket connection failed during register:', socketError);
+      }
+      
+      try {
+        await notificationService.initialize();
+      } catch (notifError) {
+        console.error('Notification initialization failed during register:', notifError);
+      }
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Registration failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
